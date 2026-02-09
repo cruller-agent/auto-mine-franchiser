@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@miner-launchpad-foundry/interfaces/IRig.sol";
 
 /**
  * @title FranchiserController
@@ -12,24 +13,9 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
  * @dev Implements role-based access: OWNER (withdrawals) and MANAGER (mining operations)
  * @author Cruller
  */
-interface IRig {
-    function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string calldata _epochUri)
-        external
-        returns (uint256 price);
-    function transferOwnership(address newOwner) external;
-    function epochId() external view returns (uint256);
-    function epochInitPrice() external view returns (uint256);
-    function epochStartTime() external view returns (uint256);
-    function epochUps() external view returns (uint256);
-    function epochMiner() external view returns (address);
-    function epochUri() external view returns (string memory);
-    function uri() external view returns (string memory);
-    function unit() external view returns (address);
-    function getPrice() external view returns (uint256);
-    function getUps() external view returns (uint256);
-}
 
-// Interface for getting quote token from Rig's immutable
+// Interface for getting quote token from Rig's public immutable
+// Note: quote is a public immutable in Rig.sol, so Solidity generates a getter
 interface IRigQuote {
     function quote() external view returns (address);
 }
@@ -52,6 +38,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         bool autoMiningEnabled;        // Global enable/disable for auto mining
         uint256 cooldownPeriod;        // Minimum time between mints (seconds)
         uint256 maxGasPrice;           // Maximum gas price willing to pay (gwei)
+        uint256 timeBasedMintPeriod;   // Time period after which minting is allowed regardless of price (seconds)
     }
 
     Config public config;
@@ -65,7 +52,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 minMintAmount,
         bool autoMiningEnabled,
         uint256 cooldownPeriod,
-        uint256 maxGasPrice
+        uint256 maxGasPrice,
+        uint256 timeBasedMintPeriod
     );
     event TargetRigUpdated(address indexed oldRig, address indexed newRig);
     event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId);
@@ -98,7 +86,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
             minMintAmount: 1 ether,
             autoMiningEnabled: true,
             cooldownPeriod: 300, // 5 minutes
-            maxGasPrice: 10 gwei
+            maxGasPrice: 10 gwei,
+            timeBasedMintPeriod: 3600 // 1 hour - mint after 1 hour regardless of price
         });
     }
 
@@ -114,10 +103,11 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @notice Check if mining is profitable at current price
-     * @return isProfitable Whether mining is profitable
+     * @notice Check if mining is profitable at current price or time-based condition is met
+     * @return isProfitable Whether mining is profitable or time condition is met
      * @return currentPrice Current price from rig
      * @return recommendedAmount Recommended amount to mint (always maxMintAmount if profitable)
+     * @return reason Reason for profitability: 0 = price-based, 1 = time-based, 2 = not profitable
      */
     function checkProfitability() 
         public 
@@ -125,23 +115,29 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         returns (
             bool isProfitable,
             uint256 currentPrice,
-            uint256 recommendedAmount
+            uint256 recommendedAmount,
+            uint256 reason
         ) 
     {
         currentPrice = IRig(targetRig).getPrice();
         
-        // Check if price is below max threshold for a single mining action
-        if (currentPrice > config.maxMiningPrice) {
-            return (false, currentPrice, 0);
-        }
-
-        // Calculate profit margin (simplified - assumes external price oracle would be used)
-        // For now, just check if the one-time mining price is below our max threshold
-        isProfitable = currentPrice <= config.maxMiningPrice;
+        // Check if enough time has passed since last mint (time-based condition)
+        bool timeConditionMet = block.timestamp >= lastMintTimestamp + config.timeBasedMintPeriod;
         
-        // Note: Rig's mine() function doesn't take amount - it mints based on current UPS
-        // So recommendedAmount is informational only
-        recommendedAmount = isProfitable ? config.maxMintAmount : 0;
+        // Check if price is below max threshold for a single mining action
+        bool priceConditionMet = currentPrice <= config.maxMiningPrice;
+        
+        // Mining is allowed if either condition is met
+        isProfitable = priceConditionMet || timeConditionMet;
+        
+        if (isProfitable) {
+            // Determine reason: prioritize price-based if both conditions are met
+            reason = priceConditionMet ? 0 : 1;
+            recommendedAmount = config.maxMintAmount;
+        } else {
+            reason = 2;
+            recommendedAmount = 0;
+        }
     }
 
     /**
@@ -164,8 +160,10 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 currentEpochId = IRig(targetRig).epochId();
         uint256 currentPrice = IRig(targetRig).getPrice();
         
-        // Check price is acceptable for this mining action
-        require(currentPrice <= config.maxMiningPrice, "Price too high");
+        // Check if either price condition OR time condition is met
+        bool priceConditionMet = currentPrice <= config.maxMiningPrice;
+        bool timeConditionMet = block.timestamp >= lastMintTimestamp + config.timeBasedMintPeriod;
+        require(priceConditionMet || timeConditionMet, "Price too high and time condition not met");
 
         // Get quote token (payment token for the Rig) - use auxiliary interface
         address quoteToken = IRigQuote(targetRig).quote();
@@ -179,11 +177,12 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
 
         // Execute mine - Rig pulls payment via transferFrom(msg.sender, ...)
         // Previous miner receives minted tokens, recipient becomes new epochMiner
+        // If time condition is met but price exceeds max, use currentPrice; otherwise use maxMiningPrice
         price = IRig(targetRig).mine(
             recipient,
             currentEpochId,
             block.timestamp + 300, // 5 min deadline from now
-            config.maxMiningPrice,
+            timeConditionMet && !priceConditionMet ? currentPrice : config.maxMiningPrice,
             epochUri
         );
         
@@ -204,11 +203,13 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 _minMintAmount,
         bool _autoMiningEnabled,
         uint256 _cooldownPeriod,
-        uint256 _maxGasPrice
+        uint256 _maxGasPrice,
+        uint256 _timeBasedMintPeriod
     ) external onlyRole(OWNER_ROLE) {
         require(_maxMintAmount >= _minMintAmount, "Invalid mint amounts");
         require(_cooldownPeriod <= 1 days, "Cooldown too long");
         require(_maxGasPrice > 0, "Invalid gas price");
+        require(_timeBasedMintPeriod > 0, "Invalid time-based mint period");
 
         config.maxMiningPrice = _maxMiningPrice;
         config.minProfitMargin = _minProfitMargin;
@@ -217,6 +218,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         config.autoMiningEnabled = _autoMiningEnabled;
         config.cooldownPeriod = _cooldownPeriod;
         config.maxGasPrice = _maxGasPrice;
+        config.timeBasedMintPeriod = _timeBasedMintPeriod;
 
         emit ConfigUpdated(
             _maxMiningPrice,
@@ -225,7 +227,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
             _minMintAmount,
             _autoMiningEnabled,
             _cooldownPeriod,
-            _maxGasPrice
+            _maxGasPrice,
+            _timeBasedMintPeriod
         );
     }
 
@@ -288,27 +291,40 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     /**
      * @notice Get current mining status
      * @return isEnabled Whether auto mining is enabled
-     * @return canMintNow Whether mining is currently allowed (cooldown + profitability)
+     * @return canMintNow Whether mining is currently allowed (cooldown + profitability/time condition)
      * @return currentPrice Current price from the rig
-     * @return nextMintTime Timestamp when next mint can occur
+     * @return nextMintTime Timestamp when next mint can occur (cooldown)
+     * @return nextTimeBasedMintTime Timestamp when time-based minting becomes available
      * @return quoteBalance Current quote token balance of controller
      * @return currentEpochId Current epoch ID from the rig
+     * @return priceConditionMet Whether price condition is currently met
+     * @return timeConditionMet Whether time condition is currently met
      */
     function getMiningStatus() external view returns (
         bool isEnabled,
         bool canMintNow,
         uint256 currentPrice,
         uint256 nextMintTime,
+        uint256 nextTimeBasedMintTime,
         uint256 quoteBalance,
-        uint256 currentEpochId
+        uint256 currentEpochId,
+        bool priceConditionMet,
+        bool timeConditionMet
     ) {
         isEnabled = config.autoMiningEnabled;
         currentPrice = IRig(targetRig).getPrice();
-        // Mining is allowed if the current one-time mining price is below our max threshold
-        canMintNow = (currentPrice <= config.maxMiningPrice) && 
-                     (block.timestamp >= lastMintTimestamp + config.cooldownPeriod) &&
-                     isEnabled;
+        
+        // Check individual conditions
+        priceConditionMet = currentPrice <= config.maxMiningPrice;
+        timeConditionMet = block.timestamp >= lastMintTimestamp + config.timeBasedMintPeriod;
+        bool cooldownPassed = block.timestamp >= lastMintTimestamp + config.cooldownPeriod;
+        
+        // Mining is allowed if cooldown passed AND (price condition OR time condition is met)
+        canMintNow = cooldownPassed && (priceConditionMet || timeConditionMet) && isEnabled;
+        
         nextMintTime = lastMintTimestamp + config.cooldownPeriod;
+        nextTimeBasedMintTime = lastMintTimestamp + config.timeBasedMintPeriod;
+        
         address quoteToken = IRigQuote(targetRig).quote();
         quoteBalance = IERC20(quoteToken).balanceOf(address(this));
         currentEpochId = IRig(targetRig).epochId();

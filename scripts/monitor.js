@@ -20,13 +20,13 @@ const RECIPIENT_ADDRESS = process.env.RECIPIENT_ADDRESS || process.env.OWNER_ADD
 // Contract ABIs (minimal)
 const CONTROLLER_ABI = [
   "function targetRig() view returns (address)",
-  "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
+  "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount, uint256 reason)",
   "function executeMine(address recipient, string epochUri) external returns (uint256 price)",
-  "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 quoteBalance, uint256 currentEpochId)",
-  "function config() view returns (uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
+  "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 nextTimeBasedMintTime, uint256 quoteBalance, uint256 currentEpochId, bool priceConditionMet, bool timeConditionMet)",
+  "function config() view returns (uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice, uint256 timeBasedMintPeriod)",
   "function updateTargetRig(address newRig) external",
   "event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId)",
-  "event ConfigUpdated(uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
+  "event ConfigUpdated(uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice, uint256 timeBasedMintPeriod)",
   "event TargetRigUpdated(address indexed oldRig, address indexed newRig)"
 ];
 
@@ -148,6 +148,7 @@ async function displayConfig() {
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);
     console.log(`  Cooldown: ${config.cooldownPeriod}s`);
     console.log(`  Max Gas: ${config.maxGasPrice} gwei`);
+    console.log(`  Time-Based Mint Period: ${config.timeBasedMintPeriod}s`);
     console.log(`  Controller Quote Balance: ${ethers.formatUnits(status.quoteBalance, quoteDecimals)} ${quoteSymbol}`);
     console.log(`  Current Epoch: ${status.currentEpochId}`);
   } catch (error) {
@@ -192,7 +193,7 @@ async function checkAndMine() {
     }
 
     // Check profitability
-    const [isProfitable, currentPrice, recommendedAmount] = await controller.checkProfitability();
+    const [isProfitable, currentPrice, recommendedAmount, reason] = await controller.checkProfitability();
     
     const formattedPrice = ethers.formatUnits(currentPrice, quoteDecimals);
     const formattedBalance = ethers.formatUnits(status.quoteBalance, quoteDecimals);
@@ -201,6 +202,21 @@ async function checkAndMine() {
     console.log(`[${timestamp}] Check #${stats.checksPerformed}`);
     console.log(`  Price: ${formattedPrice} ${quoteSymbol} | Epoch: ${status.currentEpochId} | Balance: ${formattedBalance} ${quoteSymbol}`);
     
+    // Show condition status
+    if (status.priceConditionMet) {
+      console.log(`  ✅ Price condition met (below max)`);
+    } else {
+      console.log(`  ⛔ Price condition not met (above max)`);
+    }
+    
+    if (status.timeConditionMet) {
+      console.log(`  ✅ Time condition met (enough time passed)`);
+    } else {
+      const nextTimeMint = new Date(Number(status.nextTimeBasedMintTime) * 1000);
+      const waitTime = Math.max(0, Math.floor((nextTimeMint - new Date()) / 1000));
+      console.log(`  ⏳ Time condition: ${waitTime}s until time-based mint available`);
+    }
+    
     if (!status.canMintNow) {
       const nextMint = new Date(Number(status.nextMintTime) * 1000);
       console.log(`  ⏳ Cooldown active. Next mint available: ${nextMint.toLocaleTimeString()}`);
@@ -208,12 +224,14 @@ async function checkAndMine() {
     }
 
     if (!isProfitable || recommendedAmount === 0n) {
-      console.log(`  ⛔ Not profitable at current price`);
+      const reasonText = reason === 0n ? "price-based" : reason === 1n ? "time-based" : "not profitable";
+      console.log(`  ⛔ Not profitable: ${reasonText}`);
       return;
     }
 
     // Execute mine (note: actual amount minted determined by Rig's UPS)
-    console.log(`  ✅ PROFITABLE! Executing mine...`);
+    const reasonText = reason === 0n ? "price-based" : "time-based";
+    console.log(`  ✅ PROFITABLE! Executing mine (${reasonText})...`);
     console.log(`  Price: ${formattedPrice} ${quoteSymbol}`);
     
     const tx = await controller.executeMine(RECIPIENT_ADDRESS, "", {
@@ -264,7 +282,7 @@ async function checkAndMine() {
     } else if (error.message.includes("Cooldown active")) {
       console.log("⏳ Cooldown active, waiting...");
     } else if (error.message.includes("Price too high")) {
-      console.log("⛔ Price too high, waiting for better opportunity...");
+      console.log("⛔ Price too high and time condition not met, waiting for better opportunity...");
     } else if (error.message.includes("Insufficient quote token balance")) {
       console.log("❌ Insufficient quote token balance. Please fund the controller with WETH!");
     } else {
@@ -287,7 +305,7 @@ function displayStats() {
   console.log(`  Checks: ${stats.checksPerformed}`);
   console.log(`  Mints: ${stats.mintsExecuted}`);
   console.log(`  Tokens Minted: ${stats.totalTokensMinted.toFixed(2)}`);
-  console.log(`  ETH Spent: ${stats.totalETHSpent.toFixed(4)} ETH`);
+  console.log(`  Total Spent: ${stats.totalSpent.toFixed(4)} (quote token)`);
   console.log(`  Errors: ${stats.errors}`);
   if (stats.lastMintTime) {
     console.log(`  Last Mint: ${stats.lastMintTime.toLocaleString()}`);

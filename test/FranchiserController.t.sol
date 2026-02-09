@@ -28,7 +28,8 @@ contract FranchiserControllerTest is Test {
         uint256 minMintAmount,
         bool autoMiningEnabled,
         uint256 cooldownPeriod,
-        uint256 maxGasPrice
+        uint256 maxGasPrice,
+        uint256 timeBasedMintPeriod
     );
     event TargetRigUpdated(address indexed oldRig, address indexed newRig);
     event ETHWithdrawn(address indexed to, uint256 amount);
@@ -62,7 +63,7 @@ contract FranchiserControllerTest is Test {
         assertTrue(controller.hasRole(OWNER_ROLE, owner));
         assertTrue(controller.hasRole(MANAGER_ROLE, manager));
         
-        (uint256 maxMiningPrice, uint256 minMargin, , , bool enabled, ,) = controller.config();
+        (uint256 maxMiningPrice, uint256 minMargin, , , bool enabled, , ,) = controller.config();
         
         assertEq(maxMiningPrice, MAX_MINING_PRICE);
         assertEq(minMargin, MIN_MARGIN);
@@ -70,11 +71,13 @@ contract FranchiserControllerTest is Test {
     }
     
     function testCheckProfitability() public view {
-        (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount) = controller.checkProfitability();
+        (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount, uint256 reason) = controller.checkProfitability();
         
         assertEq(currentPrice, 0.0005 ether); // Mock price
         assertTrue(isProfitable);
         assertGt(recommendedAmount, 0);
+        // Reason should be 0 (price-based) since price is below max
+        assertEq(reason, 0);
     }
     
     function testExecuteMine() public {
@@ -125,34 +128,41 @@ contract FranchiserControllerTest is Test {
             bool canMintNow,
             uint256 currentPrice,
             uint256 nextMintTime,
+            uint256 nextTimeBasedMintTime,
             uint256 quoteBalance,
-            uint256 currentEpochId
+            uint256 currentEpochId,
+            bool priceConditionMet,
+            bool timeConditionMet
         ) = controller.getMiningStatus();
         
         assertTrue(isEnabled);
         // canMintNow depends on cooldown and timestamp
         assertEq(currentPrice, 0.0005 ether);
         assertGt(nextMintTime, 0); // Will have cooldown from lastMintTimestamp
+        assertGt(nextTimeBasedMintTime, 0); // Will have time-based mint time
         assertEq(quoteBalance, INITIAL_QUOTE_BALANCE);
         assertEq(currentEpochId, 1);
+        // Price condition should be met since price is below max
+        assertTrue(priceConditionMet);
     }
     
     function testUpdateConfig() public {
         uint256 newMaxMiningPrice = 0.002 ether;
         
         vm.expectEmit(true, true, true, true);
-        emit ConfigUpdated(newMaxMiningPrice, 2000, 200 ether, 2 ether, true, 600, 20);
+        emit ConfigUpdated(newMaxMiningPrice, 2000, 200 ether, 2 ether, true, 600, 20, 7200);
         
-        controller.updateConfig(newMaxMiningPrice, 2000, 200 ether, 2 ether, true, 600, 20);
+        controller.updateConfig(newMaxMiningPrice, 2000, 200 ether, 2 ether, true, 600, 20, 7200);
         
-        (uint256 maxMiningPrice, , , , , ,) = controller.config();
+        (uint256 maxMiningPrice, , , , , , , uint256 timeBasedMintPeriod) = controller.config();
         assertEq(maxMiningPrice, newMaxMiningPrice);
+        assertEq(timeBasedMintPeriod, 7200);
     }
     
     function testUpdateConfigNonOwner() public {
         vm.prank(manager);
         vm.expectRevert();
-        controller.updateConfig(MAX_MINING_PRICE, MIN_MARGIN, 100 ether, 1 ether, true, 300, 10);
+        controller.updateConfig(MAX_MINING_PRICE, MIN_MARGIN, 100 ether, 1 ether, true, 300, 10, 3600);
     }
     
     function testEmergencyStop() public {
@@ -161,7 +171,7 @@ contract FranchiserControllerTest is Test {
         
         controller.emergencyStop();
         
-        (, , , , bool enabled, , ) = controller.config();
+        (, , , , bool enabled, , , ) = controller.config();
         assertFalse(enabled);
     }
     
@@ -206,12 +216,27 @@ contract FranchiserControllerTest is Test {
         // Set high price in mock
         mockRig.setPrice(0.002 ether);
         
-        // Warp forward to clear cooldown
+        // Warp forward to clear cooldown but not time-based period
         vm.warp(block.timestamp + 301);
         
         vm.prank(manager);
-        vm.expectRevert("Price too high");
+        vm.expectRevert("Price too high and time condition not met");
         controller.executeMine(user, "");
+    }
+    
+    function testTimeBasedMinting() public {
+        // Set high price in mock
+        mockRig.setPrice(0.002 ether);
+        
+        // Warp forward past time-based mint period (default is 3600 seconds)
+        vm.warp(block.timestamp + 3601);
+        
+        // Should succeed even though price is high
+        vm.prank(manager);
+        uint256 price = controller.executeMine(user, "");
+        
+        assertEq(price, 0.002 ether);
+        assertEq(controller.lastMintTimestamp(), block.timestamp);
     }
     
     function testReceiveETH() public {
@@ -225,7 +250,8 @@ contract FranchiserControllerTest is Test {
     
     function testUpdateTargetRig() public {
         MockERC20 newQuoteToken = new MockERC20("New Token", "NEW");
-        MockRig newRig = new MockRig(address(newQuoteToken));
+        MockERC20 newUnitToken = new MockERC20("New Unit", "UNIT");
+        MockRig newRig = new MockRig(address(newQuoteToken), address(newUnitToken));
         address oldRig = controller.targetRig();
         
         vm.expectEmit(true, true, false, false);
@@ -238,7 +264,8 @@ contract FranchiserControllerTest is Test {
     
     function testUpdateTargetRigNonOwner() public {
         MockERC20 newQuoteToken = new MockERC20("New Token", "NEW");
-        MockRig newRig = new MockRig(address(newQuoteToken));
+        MockERC20 newUnitToken = new MockERC20("New Unit", "UNIT");
+        MockRig newRig = new MockRig(address(newQuoteToken), address(newUnitToken));
         
         vm.prank(manager);
         vm.expectRevert();
