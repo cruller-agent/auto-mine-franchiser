@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@miner-launchpad-foundry/interfaces/IRig.sol";
 
 /**
  * @title FranchiserController
@@ -12,24 +13,9 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
  * @dev Implements role-based access: OWNER (withdrawals) and MANAGER (mining operations)
  * @author Cruller
  */
-interface IRig {
-    function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string calldata _epochUri)
-        external
-        returns (uint256 price);
-    function transferOwnership(address newOwner) external;
-    function epochId() external view returns (uint256);
-    function epochInitPrice() external view returns (uint256);
-    function epochStartTime() external view returns (uint256);
-    function epochUps() external view returns (uint256);
-    function epochMiner() external view returns (address);
-    function epochUri() external view returns (string memory);
-    function uri() external view returns (string memory);
-    function unit() external view returns (address);
-    function getPrice() external view returns (uint256);
-    function getUps() external view returns (uint256);
-}
 
-// Interface for getting quote token from Rig's immutable
+// Interface for getting quote token from Rig's public immutable
+// Note: quote is a public immutable in Rig.sol, so Solidity generates a getter
 interface IRigQuote {
     function quote() external view returns (address);
 }
