@@ -21,7 +21,7 @@ const RECIPIENT_ADDRESS = process.env.RECIPIENT_ADDRESS || process.env.OWNER_ADD
 const CONTROLLER_ABI = [
   "function targetRig() view returns (address)",
   "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
-  "function executeMint(address recipient, uint256 amount) external",
+  "function executeMine(address recipient, string epochUri) external returns (uint256 price)",
   "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 ethBalance, uint256 currentEpochId)",
   "function config() view returns (uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
   "event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId)"
@@ -134,11 +134,11 @@ async function checkAndMine() {
       return;
     }
 
-    // Execute mint
-    console.log(`  ✅ PROFITABLE! Executing mint...`);
-    console.log(`  Amount: ${ethers.formatEther(recommendedAmount)} tokens`);
+    // Execute mine (note: actual amount minted determined by Rig's UPS)
+    console.log(`  ✅ PROFITABLE! Executing mine...`);
+    console.log(`  Price: ${ethers.formatEther(currentPrice)} ETH`);
     
-    const tx = await controller.executeMint(RECIPIENT_ADDRESS, recommendedAmount, {
+    const tx = await controller.executeMine(RECIPIENT_ADDRESS, "", {
       gasLimit: 500000, // Safety limit
     });
     

@@ -84,51 +84,60 @@ contract FranchiserControllerTest is Test {
         assertGt(recommendedAmount, 0);
     }
     
-    function testExecuteMint() public {
-        uint256 amount = 10 ether;
-        uint256 cost = mockRig.quote(amount);
-        
+    function testExecuteMine() public {
         // Warp forward to clear any initial cooldown
         vm.warp(block.timestamp + 301);
         
-        vm.expectEmit(true, false, false, true);
-        emit TokensMinted(user, amount, cost, 1);
-        
         vm.prank(manager);
-        controller.executeMint(user, amount);
+        uint256 price = controller.executeMine(user, "");
         
+        assertEq(price, 0.0005 ether);
         assertEq(controller.lastMintTimestamp(), block.timestamp);
     }
     
-    function testExecuteMintNonManager() public {
-        uint256 amount = 10 ether;
-        
+    function testExecuteMineNonManager() public {
         vm.prank(user);
         vm.expectRevert();
-        controller.executeMint(user, amount);
+        controller.executeMine(user, "");
     }
     
-    function testExecuteMintWithCooldown() public {
-        uint256 amount = 10 ether;
-        
+    function testExecuteMineWithCooldown() public {
         // Warp forward to clear any initial cooldown
         vm.warp(block.timestamp + 301);
         
-        // First mint
+        // First mine
         vm.prank(manager);
-        controller.executeMint(user, amount);
+        controller.executeMine(user, "");
         
-        // Try immediate second mint (should fail)
+        // Try immediate second mine (should fail)
         vm.prank(manager);
         vm.expectRevert("Cooldown active");
-        controller.executeMint(user, amount);
+        controller.executeMine(user, "");
         
         // Wait for cooldown
         vm.warp(block.timestamp + 301);
         
         // Now should work
         vm.prank(manager);
-        controller.executeMint(user, amount);
+        controller.executeMine(user, "");
+    }
+    
+    function testGetMiningStatus() public {
+        (
+            bool isEnabled,
+            bool canMintNow,
+            uint256 currentPrice,
+            uint256 nextMintTime,
+            uint256 ethBalance,
+            uint256 currentEpochId
+        ) = controller.getMiningStatus();
+        
+        assertTrue(isEnabled);
+        // canMintNow depends on cooldown and timestamp
+        assertEq(currentPrice, 0.0005 ether);
+        assertGt(nextMintTime, 0); // Will have cooldown from lastMintTimestamp
+        assertEq(ethBalance, 10 ether);
+        assertEq(currentEpochId, 1);
     }
     
     function testUpdateConfig() public {
@@ -200,22 +209,16 @@ contract FranchiserControllerTest is Test {
         controller.withdrawETH(payable(manager), 1 ether);
     }
     
-    function testGetMiningStatus() public {
-        (
-            bool isEnabled,
-            bool canMintNow,
-            uint256 currentPrice,
-            uint256 nextMintTime,
-            uint256 ethBalance,
-            uint256 currentEpochId
-        ) = controller.getMiningStatus();
+    function testInsufficientBalance() public {
+        // Drain controller
+        controller.withdrawETH(payable(owner), address(controller).balance);
         
-        assertTrue(isEnabled);
-        // canMintNow depends on cooldown and timestamp
-        assertEq(currentPrice, 0.0005 ether);
-        assertGt(nextMintTime, 0); // Will have cooldown from lastMintTimestamp
-        assertEq(ethBalance, 10 ether);
-        assertEq(currentEpochId, 1);
+        // Warp forward to clear cooldown
+        vm.warp(block.timestamp + 301);
+        
+        vm.prank(manager);
+        vm.expectRevert("Insufficient ETH balance");
+        controller.executeMine(user, "");
     }
     
     function testPriceExceedsMaximum() public {
@@ -227,31 +230,7 @@ contract FranchiserControllerTest is Test {
         
         vm.prank(manager);
         vm.expectRevert("Price too high");
-        controller.executeMint(user, 10 ether);
-    }
-    
-    function testInsufficientBalance() public {
-        // Drain controller
-        controller.withdrawETH(payable(owner), address(controller).balance);
-        
-        // Warp forward to clear cooldown
-        vm.warp(block.timestamp + 301);
-        
-        vm.prank(manager);
-        vm.expectRevert("Insufficient ETH balance");
-        controller.executeMint(user, 10 ether);
-    }
-    
-    function testMintAmountBounds() public {
-        // Too small
-        vm.prank(manager);
-        vm.expectRevert("Amount out of bounds");
-        controller.executeMint(user, 0.5 ether);
-        
-        // Too large
-        vm.prank(manager);
-        vm.expectRevert("Amount out of bounds");
-        controller.executeMint(user, 150 ether);
+        controller.executeMine(user, "");
     }
     
     function testReceiveETH() public {

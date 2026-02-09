@@ -11,10 +11,13 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @dev Implements role-based access: OWNER (withdrawals) and MANAGER (mining operations)
  */
 interface IRig {
-    function mint(address to, uint256 amount) external payable;
-    function quotePrice() external view returns (uint256);
-    function quote(uint256 amount) external view returns (uint256);
-    function currentEpochId() external view returns (uint256);
+    function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string memory _epochUri)
+        external
+        payable
+        returns (uint256 price);
+    function epochId() external view returns (uint256);
+    function getPrice() external view returns (uint256);
+    function unit() external view returns (address);
 }
 
 contract FranchiserController is AccessControl, ReentrancyGuard {
@@ -97,8 +100,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     /**
      * @notice Check if mining is profitable at current price
      * @return isProfitable Whether mining is profitable
-     * @return currentPrice Current price per token
-     * @return recommendedAmount Recommended amount to mint
+     * @return currentPrice Current price from rig
+     * @return recommendedAmount Recommended amount to mint (always maxMintAmount if profitable)
      */
     function checkProfitability() 
         public 
@@ -109,7 +112,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
             uint256 recommendedAmount
         ) 
     {
-        currentPrice = IRig(targetRig).quotePrice();
+        currentPrice = IRig(targetRig).getPrice();
         
         // Check if price is below max threshold
         if (currentPrice > config.maxPricePerToken) {
@@ -120,39 +123,50 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         // For now, just check if we're below max price
         isProfitable = currentPrice <= config.maxPricePerToken;
         
-        // Recommend minting max amount if profitable
+        // Note: Rig's mine() function doesn't take amount - it mints based on current UPS
+        // So recommendedAmount is informational only
         recommendedAmount = isProfitable ? config.maxMintAmount : 0;
     }
 
     /**
      * @notice Execute mining operation (MANAGER only)
      * @param recipient Address to receive minted tokens
-     * @param amount Amount of tokens to mint
+     * @param epochUri URI for epoch metadata (optional, can be empty)
      */
-    function executeMint(address recipient, uint256 amount) 
+    function executeMine(address recipient, string memory epochUri) 
         external 
         onlyRole(MANAGER_ROLE) 
         nonReentrant 
+        returns (uint256 price)
     {
         require(config.autoMiningEnabled, "Auto mining disabled");
-        require(amount >= config.minMintAmount && amount <= config.maxMintAmount, "Amount out of bounds");
         require(block.timestamp >= lastMintTimestamp + config.cooldownPeriod, "Cooldown active");
         require(tx.gasprice <= config.maxGasPrice * 1 gwei, "Gas price too high");
 
-        // Get quote and check profitability
-        uint256 cost = IRig(targetRig).quote(amount);
-        require(address(this).balance >= cost, "Insufficient ETH balance");
-
+        // Get current epoch and price
+        uint256 currentEpochId = IRig(targetRig).epochId();
+        uint256 currentPrice = IRig(targetRig).getPrice();
+        
         // Check price is acceptable
-        uint256 pricePerToken = cost * 1e18 / amount;
-        require(pricePerToken <= config.maxPricePerToken, "Price too high");
+        require(currentPrice <= config.maxPricePerToken, "Price too high");
+        require(address(this).balance >= currentPrice, "Insufficient ETH balance");
 
-        // Execute mint
-        uint256 epochId = IRig(targetRig).currentEpochId();
-        IRig(targetRig).mint{value: cost}(recipient, amount);
+        // Execute mine - Rig determines amount based on UPS
+        // deadline = current block timestamp (immediate execution)
+        // maxPrice = our configured max price
+        price = IRig(targetRig).mine{value: currentPrice}(
+            recipient,
+            currentEpochId,
+            block.timestamp,
+            config.maxPricePerToken,
+            epochUri
+        );
         
         lastMintTimestamp = block.timestamp;
-        emit TokensMinted(recipient, amount, cost, epochId);
+        
+        // Note: We don't know the exact amount minted (determined by Rig's UPS)
+        // Emit event with price paid
+        emit TokensMinted(recipient, 0, price, currentEpochId);
     }
 
     /**
@@ -258,12 +272,12 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 currentEpochId
     ) {
         isEnabled = config.autoMiningEnabled;
-        currentPrice = IRig(targetRig).quotePrice();
+        currentPrice = IRig(targetRig).getPrice();
         canMintNow = (currentPrice <= config.maxPricePerToken) && 
                      (block.timestamp >= lastMintTimestamp + config.cooldownPeriod);
         nextMintTime = lastMintTimestamp + config.cooldownPeriod;
         ethBalance = address(this).balance;
-        currentEpochId = IRig(targetRig).currentEpochId();
+        currentEpochId = IRig(targetRig).epochId();
     }
 
     /**
