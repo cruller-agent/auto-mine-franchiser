@@ -1,4 +1,13 @@
 {
+  "lib/forge-std": {
+    "tag": {
+      "name": "v1.14.0",
+      "rev": "1801b0541f4fda118a10798fd3486bb7051c5dd6"
+    }
+  },
+  "lib/miner-launchpad-foundry": {
+    "rev": "5efdcb2d4f3f6e862e7f4fd5acf7cefefb745ae4"
+  },
   "lib/openzeppelin-contracts": {
     "tag": {
       "name": "v5.5.0",

@@ -12,9 +12,9 @@ const RPC_URL = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 const CONTROLLER_ADDRESS = process.env.CONTROLLER_ADDRESS;
 
 const CONTROLLER_ABI = [
-  "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 quoteBalance, uint256 currentEpochId)",
-  "function config() view returns (uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
-  "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
+  "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 nextTimeBasedMintTime, uint256 quoteBalance, uint256 currentEpochId, bool priceConditionMet, bool timeConditionMet)",
+  "function config() view returns (uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice, uint256 timeBasedMintPeriod)",
+  "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount, uint256 reason)",
   "function lastMintTimestamp() view returns (uint256)",
   "function targetRig() view returns (address)",
 ];
@@ -68,7 +68,8 @@ async function main() {
     console.log(`  Mint Range: ${ethers.formatEther(config.minMintAmount)} - ${ethers.formatEther(config.maxMintAmount)} tokens`);
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);
     console.log(`  Cooldown: ${config.cooldownPeriod}s`);
-    console.log(`  Max Gas: ${config.maxGasPrice} gwei\n`);
+    console.log(`  Max Gas: ${config.maxGasPrice} gwei`);
+    console.log(`  Time-Based Mint Period: ${config.timeBasedMintPeriod}s\n`);
 
     // Get mining status
     const status = await controller.getMiningStatus();
@@ -77,19 +78,30 @@ async function main() {
     console.log(`  Epoch: ${status.currentEpochId}`);
     console.log(`  Quote Balance: ${ethers.formatUnits(status.quoteBalance, quoteDecimals)} ${quoteSymbol}`);
     console.log(`  Can Mint Now: ${status.canMintNow ? "✅ YES" : "❌ NO"}`);
+    console.log(`  Price Condition: ${status.priceConditionMet ? "✅ MET" : "❌ NOT MET"}`);
+    console.log(`  Time Condition: ${status.timeConditionMet ? "✅ MET" : "❌ NOT MET"}`);
     
     if (!status.canMintNow && status.nextMintTime > 0n) {
       const nextMint = new Date(Number(status.nextMintTime) * 1000);
       const now = new Date();
       const waitTime = Math.max(0, Math.floor((nextMint - now) / 1000));
-      console.log(`  Next Mine: ${nextMint.toLocaleString()} (in ${waitTime}s)`);
+      console.log(`  Next Mine (Cooldown): ${nextMint.toLocaleString()} (in ${waitTime}s)`);
+    }
+    
+    if (!status.timeConditionMet && status.nextTimeBasedMintTime > 0n) {
+      const nextTimeMint = new Date(Number(status.nextTimeBasedMintTime) * 1000);
+      const now = new Date();
+      const waitTime = Math.max(0, Math.floor((nextTimeMint - now) / 1000));
+      console.log(`  Next Time-Based Mint: ${nextTimeMint.toLocaleString()} (in ${waitTime}s)`);
     }
     console.log("");
 
     // Check profitability
-    const [isProfitable, currentPrice, recommendedAmount] = await controller.checkProfitability();
+    const [isProfitable, currentPrice, recommendedAmount, reason] = await controller.checkProfitability();
+    const reasonText = reason === 0n ? "Price-based" : reason === 1n ? "Time-based" : "Not profitable";
     console.log("💰 Profitability:");
     console.log(`  Status: ${isProfitable ? "✅ PROFITABLE" : "❌ NOT PROFITABLE"}`);
+    console.log(`  Reason: ${reasonText}`);
     console.log(`  Current Price: ${ethers.formatUnits(currentPrice, quoteDecimals)} ${quoteSymbol}`);
     console.log(`  Recommended: ${ethers.formatEther(recommendedAmount)} tokens\n`);
 
