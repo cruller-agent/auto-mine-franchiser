@@ -5,20 +5,17 @@
   "main": "scripts/monitor.js",
   "scripts": {
     "monitor": "node scripts/monitor.js",
-    "deploy": "hardhat run scripts/deploy.js --network base",
-    "test": "hardhat test",
-    "compile": "hardhat compile"
+    "status": "node scripts/check-status.js",
+    "build": "forge build",
+    "test": "forge test -vvv",
+    "deploy": "forge script script/Deploy.s.sol:DeployScript --rpc-url base --broadcast --verify",
+    "deploy:testnet": "forge script script/Deploy.s.sol:DeployScript --rpc-url base_sepolia --broadcast"
   },
   "keywords": ["donutdao", "franchise", "mining", "bot"],
   "author": "Cruller",
   "license": "MIT",
   "dependencies": {
-    "@openzeppelin/contracts": "^5.0.0",
     "dotenv": "^16.0.0",
     "ethers": "^6.9.0"
-  },
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
-    "hardhat": "^2.19.0"
   }
 }

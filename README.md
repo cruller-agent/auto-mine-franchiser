@@ -2,6 +2,8 @@
 
 Automated Franchiser token mining bot with smart contract controller. Monitors the Franchiser token (0x9310aF...31060) and executes profitable mining operations via an intermediary controller contract.
 
+> **Built with Foundry** - Fast, modern Solidity development framework
+
 ## 🏗️ Architecture
 
 ```
@@ -38,15 +40,26 @@ Automated Franchiser token mining bot with smart contract controller. Monitors t
 
 ### Prerequisites
 
-- Node.js 18+
-- An Ethereum wallet with Base mainnet access
-- ETH on Base for deployment and mining
+- **Foundry** (forge, cast, anvil) - [Install here](https://book.getfoundry.sh/getting-started/installation)
+- **Node.js 18+**
+- Base mainnet wallet with ETH for deployment and mining
 
 ### Installation
 
 ```bash
-# Install dependencies
+# Clone repository
+git clone https://github.com/cruller-agent/glazed-whale.git
+cd glazed-whale
+
+# Install Foundry (if needed)
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+
+# Install Node dependencies
 npm install
+
+# Install Foundry dependencies
+forge install
 
 # Copy environment template
 cp .env.example .env
@@ -70,17 +83,29 @@ MAX_PRICE_PER_TOKEN=1000000000000000    # 0.001 ETH max price
 MIN_PROFIT_MARGIN=1000                   # 10% minimum profit
 ```
 
-### Deployment
+### Build & Test
 
 ```bash
 # Compile contracts
-npm run compile
+npm run build
+# or: forge build
 
 # Run tests
 npm test
+# or: forge test -vvv
 
+# Run specific test
+forge test --match-test testExecuteMint -vvv
+```
+
+### Deployment
+
+```bash
 # Deploy to Base mainnet
 npm run deploy
+
+# Or deploy to testnet first
+npm run deploy:testnet
 
 # After deployment, add CONTROLLER_ADDRESS to .env
 CONTROLLER_ADDRESS=0x...
@@ -88,24 +113,29 @@ CONTROLLER_ADDRESS=0x...
 
 ### Fund the Controller
 
-Send ETH to the deployed controller address to enable mining:
+Send ETH to the deployed controller address:
 
 ```bash
-# From your owner wallet, send ETH
-cast send $CONTROLLER_ADDRESS --value 0.1ether --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
+# Using cast (Foundry)
+cast send $CONTROLLER_ADDRESS --value 0.1ether \
+  --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
+
+# Or send via MetaMask/wallet to the controller address
 ```
 
 ### Start Monitoring
 
 ```bash
+# Start the monitor
 npm run monitor
-```
 
-The monitor will:
-- Check profitability every 60 seconds (configurable)
-- Execute mints when price is favorable
-- Display real-time stats
-- Log all operations
+# Check status
+npm run status
+
+# Run in background with PM2
+pm2 start scripts/monitor.js --name "glazed-whale"
+pm2 save
+```
 
 ## 📋 Configuration Parameters
 
@@ -123,18 +153,15 @@ All parameters are stored in the smart contract and can be updated by the owner:
 
 ### Updating Configuration
 
-Use the `updateConfig` function (owner only):
-
 ```bash
-# Example: Update max price to 0.002 ETH
-cast send $CONTROLLER_ADDRESS "updateConfig(uint256,uint256,uint256,uint256,bool,uint256,uint256)" \
+# Update max price to 0.002 ETH
+cast send $CONTROLLER_ADDRESS \
+  "updateConfig(uint256,uint256,uint256,uint256,bool,uint256,uint256)" \
   2000000000000000 1000 100000000000000000000 1000000000000000000 true 300 10 \
   --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
 ```
 
 ## 🔐 Access Control
-
-The contract implements role-based access:
 
 ### Owner Role
 Can:
@@ -160,13 +187,6 @@ Can:
 
 ### Profitability Calculation
 
-The monitor checks:
-1. Current mining price from Franchiser Rig
-2. Configured maximum price threshold
-3. Cooldown period status
-4. Gas price limits
-5. Available ETH balance
-
 Mining executes when:
 ```
 currentPrice ≤ maxPricePerToken
@@ -188,42 +208,36 @@ AND sufficient ETH balance
 
 ## 📊 Monitoring & Stats
 
-The monitor displays:
-- Current mining price and epoch
-- Profitability status
-- Successful mints
-- Total tokens minted
-- Total ETH spent
-- Uptime and error count
+Check real-time status:
 
-Example output:
-```
-[2026-02-09T08:00:00.000Z] Check #42
-  Price: 0.000876 ETH/token | Epoch: 5 | Balance: 0.5 ETH
-  ✅ PROFITABLE! Executing mint...
-  Amount: 100.0 tokens
-  📝 Transaction submitted: 0xabc...
-  ✅ MINT SUCCESSFUL!
-  Tokens: 100.0 | Cost: 0.0876 ETH | Epoch: 5
+```bash
+# Quick status check
+npm run status
+
+# Output shows:
+🐋 Glazed Whale Status Report
+
+📍 Controller: 0x...
+🎯 Franchiser Rig: 0x9310aF...
+
+⚙️  Configuration:
+  Max Price: 0.001 ETH/token
+  Auto Mining: ✅ ENABLED
+  ETH Balance: 0.1 ETH
+
+💰 Profitability:
+  Status: ✅ PROFITABLE
+  Current Price: 0.000876 ETH/token
 ```
 
 ## 🛠️ Advanced Usage
-
-### Query Status
-
-```bash
-# Check mining status
-cast call $CONTROLLER_ADDRESS "getMiningStatus()" --rpc-url $BASE_RPC_URL
-
-# Check profitability
-cast call $CONTROLLER_ADDRESS "checkProfitability()" --rpc-url $BASE_RPC_URL
-```
 
 ### Manual Operations
 
 ```bash
 # Trigger manual mint (manager only)
-cast send $CONTROLLER_ADDRESS "executeMint(address,uint256)" \
+cast send $CONTROLLER_ADDRESS \
+  "executeMint(address,uint256)" \
   $RECIPIENT_ADDRESS 10000000000000000000 \
   --rpc-url $BASE_RPC_URL --private-key $MANAGER_PRIVATE_KEY
 
@@ -232,14 +246,13 @@ cast send $CONTROLLER_ADDRESS "emergencyStop()" \
   --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
 
 # Withdraw ETH (owner only)
-cast send $CONTROLLER_ADDRESS "withdrawETH(address,uint256)" \
-  $OWNER_ADDRESS 100000000000000000 \
+cast send $CONTROLLER_ADDRESS \
+  "withdrawETH(address,uint256)" \
+  $OWNER_ADDRESS 0 \
   --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
 ```
 
 ### Run in Production
-
-Use a process manager for 24/7 operation:
 
 ```bash
 # With PM2
@@ -256,33 +269,38 @@ sudo systemctl start glazed-whale
 ## 🧪 Testing
 
 ```bash
-# Run full test suite
-npm test
+# Run all tests
+forge test -vvv
+
+# Run specific test
+forge test --match-test testExecuteMint -vvv
+
+# Run with gas report
+forge test --gas-report
 
 # Run with coverage
-npm run coverage
-
-# Test on local fork
-npx hardhat node --fork https://mainnet.base.org
-npx hardhat run scripts/deploy.js --network localhost
+forge coverage
 ```
 
 ## 🔍 Contract Verification
 
-After deployment, verify on BaseScan:
+After deployment:
 
 ```bash
-npx hardhat verify --network base $CONTROLLER_ADDRESS \
-  "0x9310aF2707c458F52e1c4D48749433454D731060" \
-  $OWNER_ADDRESS \
-  $MANAGER_ADDRESS \
-  "1000000000000000" \
-  "1000"
+forge verify-contract $CONTROLLER_ADDRESS \
+  src/FranchiserController.sol:FranchiserController \
+  --chain-id 8453 \
+  --constructor-args $(cast abi-encode \
+    "constructor(address,address,address,uint256,uint256)" \
+    $FRANCHISER_RIG $OWNER_ADDRESS $MANAGER_ADDRESS \
+    $MAX_PRICE_PER_TOKEN $MIN_PROFIT_MARGIN) \
+  --etherscan-api-key $BASESCAN_API_KEY
 ```
 
 ## 📚 Resources
 
 - [Franchiser Documentation](https://github.com/cruller-agent/donutdao-app-scaffold/blob/main/contracts/donutdao-contracts/docs/FRANCHISE.md)
+- [Foundry Book](https://book.getfoundry.sh/)
 - [DonutDAO Ecosystem](https://donutdao.com)
 - [Base Network](https://base.org)
 
