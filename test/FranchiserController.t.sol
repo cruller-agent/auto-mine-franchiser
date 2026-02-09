@@ -28,6 +28,7 @@ contract FranchiserControllerTest is Test {
         uint256 cooldownPeriod,
         uint256 maxGasPrice
     );
+    event TargetRigUpdated(address indexed oldRig, address indexed newRig);
     event ETHWithdrawn(address indexed to, uint256 amount);
     event TokensWithdrawn(address indexed token, address indexed to, uint256 amount);
     event EmergencyStop(address indexed by);
@@ -42,7 +43,7 @@ contract FranchiserControllerTest is Test {
         
         // Deploy controller
         controller = new FranchiserController(
-            address(mockRig),
+            address(mockRig),  // targetRig
             owner,
             manager,
             MAX_PRICE,
@@ -260,5 +261,30 @@ contract FranchiserControllerTest is Test {
         assertTrue(success);
         
         assertEq(address(controller).balance, balanceBefore + 1 ether);
+    }
+    
+    function testUpdateTargetRig() public {
+        MockRig newRig = new MockRig();
+        address oldRig = controller.targetRig();
+        
+        vm.expectEmit(true, true, false, false);
+        emit TargetRigUpdated(oldRig, address(newRig));
+        
+        controller.updateTargetRig(address(newRig));
+        
+        assertEq(controller.targetRig(), address(newRig));
+    }
+    
+    function testUpdateTargetRigNonOwner() public {
+        MockRig newRig = new MockRig();
+        
+        vm.prank(manager);
+        vm.expectRevert();
+        controller.updateTargetRig(address(newRig));
+    }
+    
+    function testUpdateTargetRigZeroAddress() public {
+        vm.expectRevert("Invalid rig address");
+        controller.updateTargetRig(address(0));
     }
 }

@@ -21,8 +21,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
-    // Franchiser Rig contract address
-    address public immutable franchiserRig;
+    // Target Rig contract address (can be updated by owner)
+    address public targetRig;
     
     // Configuration parameters
     struct Config {
@@ -48,23 +48,24 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 cooldownPeriod,
         uint256 maxGasPrice
     );
+    event TargetRigUpdated(address indexed oldRig, address indexed newRig);
     event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId);
     event ETHWithdrawn(address indexed to, uint256 amount);
     event TokensWithdrawn(address indexed token, address indexed to, uint256 amount);
     event EmergencyStop(address indexed by);
 
     constructor(
-        address _franchiserRig,
+        address _targetRig,
         address _owner,
         address _manager,
         uint256 _maxPricePerToken,
         uint256 _minProfitMargin
     ) {
-        require(_franchiserRig != address(0), "Invalid rig address");
+        require(_targetRig != address(0), "Invalid rig address");
         require(_owner != address(0), "Invalid owner");
         require(_manager != address(0), "Invalid manager");
 
-        franchiserRig = _franchiserRig;
+        targetRig = _targetRig;
 
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(OWNER_ROLE, _owner);
@@ -83,6 +84,17 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     }
 
     /**
+     * @notice Update target rig address (OWNER only)
+     * @param _newRig New rig contract address
+     */
+    function updateTargetRig(address _newRig) external onlyRole(OWNER_ROLE) {
+        require(_newRig != address(0), "Invalid rig address");
+        address oldRig = targetRig;
+        targetRig = _newRig;
+        emit TargetRigUpdated(oldRig, _newRig);
+    }
+
+    /**
      * @notice Check if mining is profitable at current price
      * @return isProfitable Whether mining is profitable
      * @return currentPrice Current price per token
@@ -97,7 +109,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
             uint256 recommendedAmount
         ) 
     {
-        currentPrice = IRig(franchiserRig).quotePrice();
+        currentPrice = IRig(targetRig).quotePrice();
         
         // Check if price is below max threshold
         if (currentPrice > config.maxPricePerToken) {
@@ -128,7 +140,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         require(tx.gasprice <= config.maxGasPrice * 1 gwei, "Gas price too high");
 
         // Get quote and check profitability
-        uint256 cost = IRig(franchiserRig).quote(amount);
+        uint256 cost = IRig(targetRig).quote(amount);
         require(address(this).balance >= cost, "Insufficient ETH balance");
 
         // Check price is acceptable
@@ -136,8 +148,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         require(pricePerToken <= config.maxPricePerToken, "Price too high");
 
         // Execute mint
-        uint256 epochId = IRig(franchiserRig).currentEpochId();
-        IRig(franchiserRig).mint{value: cost}(recipient, amount);
+        uint256 epochId = IRig(targetRig).currentEpochId();
+        IRig(targetRig).mint{value: cost}(recipient, amount);
         
         lastMintTimestamp = block.timestamp;
         emit TokensMinted(recipient, amount, cost, epochId);
@@ -246,12 +258,12 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 currentEpochId
     ) {
         isEnabled = config.autoMiningEnabled;
-        currentPrice = IRig(franchiserRig).quotePrice();
+        currentPrice = IRig(targetRig).quotePrice();
         canMintNow = (currentPrice <= config.maxPricePerToken) && 
                      (block.timestamp >= lastMintTimestamp + config.cooldownPeriod);
         nextMintTime = lastMintTimestamp + config.cooldownPeriod;
         ethBalance = address(this).balance;
-        currentEpochId = IRig(franchiserRig).currentEpochId();
+        currentEpochId = IRig(targetRig).currentEpochId();
     }
 
     /**

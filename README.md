@@ -1,22 +1,32 @@
-# Glazed Whale 🐋
+# Auto-Mine Franchiser ⚙️
 
-Automated Franchiser token mining bot with smart contract controller. Monitors the Franchiser token (0x9310aF...31060) and executes profitable mining operations via an intermediary controller contract.
+Generic automated mining bot for Franchiser-compatible tokens with configurable target. Set any Franchiser Rig contract address and let it auto-mine when profitable.
 
 > **Built with Foundry** - Fast, modern Solidity development framework
+
+## 🎯 Features
+
+✅ **Configurable Target** - Set any Franchiser Rig contract address  
+✅ **Owner-Updatable** - Change target rig without redeployment  
+✅ **Fully Automated** - Set and forget mining operations  
+✅ **Onchain Configuration** - All parameters stored in smart contract  
+✅ **Role-Based Security** - Separate owner and manager permissions  
+✅ **Safety Limits** - Price, gas, cooldown constraints  
+✅ **Production Ready** - Tests, docs, systemd service  
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────┐      monitors      ┌──────────────┐
-│   Monitor   │ ───────────────────> │  Franchiser  │
-│   Script    │                     │  Rig Token   │
+│   Monitor   │ ───────────────────> │ Target Rig   │
+│   Script    │                     │  (Config)    │
 └──────┬──────┘                     └──────────────┘
        │
        │ triggers when profitable
        ↓
 ┌─────────────────┐      calls      ┌──────────────┐
-│   Controller    │ ───────────────> │  Franchiser  │
-│ Smart Contract  │                  │  Rig Token   │
+│   Controller    │ ───────────────> │ Target Rig   │
+│ Smart Contract  │                  │  Token       │
 └─────────────────┘                  └──────────────┘
 ```
 
@@ -24,14 +34,15 @@ Automated Franchiser token mining bot with smart contract controller. Monitors t
 
 1. **FranchiserController.sol** - Smart contract that:
    - Holds ETH for mining operations
+   - Stores target rig address (owner can update)
    - Stores all configuration parameters onchain
    - Implements role-based access control:
-     - **Owner**: Can withdraw funds and update config
+     - **Owner**: Can withdraw funds, update config, change target rig
      - **Manager**: Can trigger mining operations
    - Enforces safety limits (price thresholds, cooldowns, gas limits)
 
 2. **monitor.js** - Monitoring script that:
-   - Continuously checks Franchiser token mining price
+   - Continuously checks target rig mining price
    - Evaluates profitability against configured thresholds
    - Triggers controller to mint when conditions are met
    - Provides real-time stats and logging
@@ -48,8 +59,8 @@ Automated Franchiser token mining bot with smart contract controller. Monitors t
 
 ```bash
 # Clone repository
-git clone https://github.com/cruller-agent/glazed-whale.git
-cd glazed-whale
+git clone https://github.com/cruller-agent/auto-mine-franchiser.git
+cd auto-mine-franchiser
 
 # Install Foundry (if needed)
 curl -L https://foundry.paradigm.xyz | bash
@@ -70,6 +81,9 @@ cp .env.example .env
 Edit `.env` with your details:
 
 ```bash
+# Target Rig to Mine (REQUIRED)
+TARGET_RIG=0x9310aF2707c458F52e1c4D48749433454D731060  # Example: Default Franchiser Rig
+
 # Owner wallet (for deployment & withdrawals)
 PRIVATE_KEY=0x...
 OWNER_ADDRESS=0x...
@@ -90,18 +104,18 @@ MIN_PROFIT_MARGIN=1000                   # 10% minimum profit
 npm run build
 # or: forge build
 
-# Run tests
+# Run tests (18 tests)
 npm test
 # or: forge test -vvv
 
 # Run specific test
-forge test --match-test testExecuteMint -vvv
+forge test --match-test testUpdateTargetRig -vvv
 ```
 
 ### Deployment
 
 ```bash
-# Deploy to Base mainnet
+# Deploy to Base mainnet (requires TARGET_RIG in .env)
 npm run deploy
 
 # Or deploy to testnet first
@@ -133,7 +147,7 @@ npm run monitor
 npm run status
 
 # Run in background with PM2
-pm2 start scripts/monitor.js --name "glazed-whale"
+pm2 start scripts/monitor.js --name "auto-mine-franchiser"
 pm2 save
 ```
 
@@ -143,6 +157,7 @@ All parameters are stored in the smart contract and can be updated by the owner:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `targetRig` | Target Rig contract address to mine | Set at deployment |
 | `maxPricePerToken` | Maximum price willing to pay per token | 0.001 ETH |
 | `minProfitMargin` | Minimum profit margin (basis points) | 1000 (10%) |
 | `maxMintAmount` | Maximum tokens per transaction | 100 tokens |
@@ -150,6 +165,18 @@ All parameters are stored in the smart contract and can be updated by the owner:
 | `autoMiningEnabled` | Global enable/disable switch | true |
 | `cooldownPeriod` | Minimum time between mints | 300s (5 min) |
 | `maxGasPrice` | Maximum gas price to pay | 10 gwei |
+
+### Updating Target Rig
+
+The owner can change the target rig at any time:
+
+```bash
+# Update to a different Franchiser Rig
+cast send $CONTROLLER_ADDRESS \
+  "updateTargetRig(address)" \
+  0xNEW_RIG_ADDRESS \
+  --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
+```
 
 ### Updating Configuration
 
@@ -167,6 +194,7 @@ cast send $CONTROLLER_ADDRESS \
 Can:
 - Withdraw ETH and tokens
 - Update configuration parameters
+- **Change target rig address**
 - Emergency stop mining
 - Grant/revoke manager role
 
@@ -202,7 +230,7 @@ AND sufficient ETH balance
 - Configuration: Stored onchain
 
 **Operation:**
-- Mining cost: Variable (depends on Franchiser epoch)
+- Mining cost: Variable (depends on target rig's epoch)
 - Gas per mint: ~200k-300k gas
 - Monitor: Negligible (read-only checks)
 
@@ -215,10 +243,10 @@ Check real-time status:
 npm run status
 
 # Output shows:
-🐋 Glazed Whale Status Report
+⚙️  Auto-Mine Franchiser Status
 
 📍 Controller: 0x...
-🎯 Franchiser Rig: 0x9310aF...
+🎯 Target Rig: 0x9310aF...
 
 ⚙️  Configuration:
   Max Price: 0.001 ETH/token
@@ -235,6 +263,9 @@ npm run status
 ### Manual Operations
 
 ```bash
+# Check current target
+cast call $CONTROLLER_ADDRESS "targetRig()" --rpc-url $BASE_RPC_URL
+
 # Trigger manual mint (manager only)
 cast send $CONTROLLER_ADDRESS \
   "executeMint(address,uint256)" \
@@ -245,7 +276,7 @@ cast send $CONTROLLER_ADDRESS \
 cast send $CONTROLLER_ADDRESS "emergencyStop()" \
   --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
 
-# Withdraw ETH (owner only)
+# Withdraw ETH (owner only, 0 = withdraw all)
 cast send $CONTROLLER_ADDRESS \
   "withdrawETH(address,uint256)" \
   $OWNER_ADDRESS 0 \
@@ -256,31 +287,47 @@ cast send $CONTROLLER_ADDRESS \
 
 ```bash
 # With PM2
-pm2 start scripts/monitor.js --name "glazed-whale"
+pm2 start scripts/monitor.js --name "auto-mine-franchiser"
 pm2 save
 pm2 startup
 
 # With systemd
-sudo cp glazed-whale.service /etc/systemd/system/
-sudo systemctl enable glazed-whale
-sudo systemctl start glazed-whale
+sudo cp auto-mine-franchiser.service /etc/systemd/system/
+sudo systemctl enable auto-mine-franchiser
+sudo systemctl start auto-mine-franchiser
 ```
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests
+# Run all tests (18 tests)
 forge test -vvv
 
-# Run specific test
+# Test summary
+forge test --summary
+
+# Specific tests
+forge test --match-test testUpdateTargetRig -vvv
 forge test --match-test testExecuteMint -vvv
 
-# Run with gas report
+# Gas report
 forge test --gas-report
 
-# Run with coverage
+# Coverage
 forge coverage
 ```
+
+### Test Coverage
+
+- ✅ Deployment and role assignment
+- ✅ Profitability checks
+- ✅ Mining execution
+- ✅ Cooldown periods
+- ✅ Configuration updates
+- ✅ **Target rig updates**
+- ✅ Emergency stops
+- ✅ Withdrawals
+- ✅ Access control
 
 ## 🔍 Contract Verification
 
@@ -292,10 +339,30 @@ forge verify-contract $CONTROLLER_ADDRESS \
   --chain-id 8453 \
   --constructor-args $(cast abi-encode \
     "constructor(address,address,address,uint256,uint256)" \
-    $FRANCHISER_RIG $OWNER_ADDRESS $MANAGER_ADDRESS \
+    $TARGET_RIG $OWNER_ADDRESS $MANAGER_ADDRESS \
     $MAX_PRICE_PER_TOKEN $MIN_PROFIT_MARGIN) \
   --etherscan-api-key $BASESCAN_API_KEY
 ```
+
+## 📚 Example Use Cases
+
+### 1. Default Franchiser Rig
+```bash
+TARGET_RIG=0x9310aF2707c458F52e1c4D48749433454D731060
+```
+
+### 2. Switch to Different Rig Later
+```bash
+# Deploy with one rig
+npm run deploy
+
+# Later, switch to another rig (no redeployment needed)
+cast send $CONTROLLER_ADDRESS "updateTargetRig(address)" 0xNEW_RIG \
+  --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
+```
+
+### 3. Multi-Rig Strategy
+Deploy multiple controllers, each targeting different rigs for diversification.
 
 ## 📚 Resources
 

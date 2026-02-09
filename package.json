@@ -1,7 +1,7 @@
 {
-  "name": "glazed-whale",
-  "version": "1.0.0",
-  "description": "Automated Franchiser token mining bot with smart contract controller",
+  "name": "auto-mine-franchiser",
+  "version": "2.0.0",
+  "description": "Generic automated mining bot for Franchiser-compatible tokens with configurable target",
   "main": "scripts/monitor.js",
   "scripts": {
     "monitor": "node scripts/monitor.js",

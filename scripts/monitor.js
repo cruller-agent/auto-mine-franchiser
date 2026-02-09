@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Franchiser Mining Monitor
- * Continuously monitors the Franchiser token and executes mining when profitable
+ * Auto-Mine Franchiser
+ * Generic automated mining monitor for Franchiser-compatible tokens
+ * Continuously monitors configured token and executes mining when profitable
  */
 
 const { ethers } = require("ethers");
@@ -18,6 +19,7 @@ const RECIPIENT_ADDRESS = process.env.RECIPIENT_ADDRESS || process.env.OWNER_ADD
 
 // Contract ABIs (minimal)
 const CONTROLLER_ABI = [
+  "function targetRig() view returns (address)",
   "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
   "function executeMint(address recipient, uint256 amount) external",
   "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 ethBalance, uint256 currentEpochId)",
@@ -61,10 +63,13 @@ async function initialize() {
 
   // Verify connection
   const network = await provider.getNetwork();
+  const targetRig = await controller.targetRig();
+  
   console.log(`✅ Connected to ${network.name} (Chain ID: ${network.chainId})`);
   console.log(`📍 Controller: ${CONTROLLER_ADDRESS}`);
+  console.log(`🎯 Target Rig: ${targetRig}`);
   console.log(`👤 Manager: ${wallet.address}`);
-  console.log(`🎯 Recipient: ${RECIPIENT_ADDRESS}`);
+  console.log(`🎁 Recipient: ${RECIPIENT_ADDRESS}`);
   
   // Display config
   await displayConfig();
