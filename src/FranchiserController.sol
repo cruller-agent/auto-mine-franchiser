@@ -13,11 +13,11 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 interface IRig {
     function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string memory _epochUri)
         external
-        payable
         returns (uint256 price);
     function epochId() external view returns (uint256);
     function getPrice() external view returns (uint256);
     function unit() external view returns (address);
+    function quote() external view returns (address);
 }
 
 contract FranchiserController is AccessControl, ReentrancyGuard {
@@ -149,12 +149,19 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         
         // Check price is acceptable
         require(currentPrice <= config.maxPricePerToken, "Price too high");
-        require(address(this).balance >= currentPrice, "Insufficient ETH balance");
 
-        // Execute mine - Rig determines amount based on UPS
-        // deadline = current block timestamp (immediate execution)
-        // maxPrice = our configured max price
-        price = IRig(targetRig).mine{value: currentPrice}(
+        // Get quote token (payment token for the Rig)
+        address quoteToken = IRig(targetRig).quote();
+        
+        // Check quote token balance
+        require(IERC20(quoteToken).balanceOf(address(this)) >= currentPrice, "Insufficient quote token balance");
+
+        // Approve Rig to spend quote tokens
+        IERC20(quoteToken).approve(targetRig, currentPrice);
+
+        // Execute mine - Rig uses transferFrom to collect payment
+        // Rig determines amount based on UPS
+        price = IRig(targetRig).mine(
             recipient,
             currentEpochId,
             block.timestamp,
@@ -268,7 +275,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         bool canMintNow,
         uint256 currentPrice,
         uint256 nextMintTime,
-        uint256 ethBalance,
+        uint256 quoteBalance,
         uint256 currentEpochId
     ) {
         isEnabled = config.autoMiningEnabled;
@@ -276,7 +283,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         canMintNow = (currentPrice <= config.maxPricePerToken) && 
                      (block.timestamp >= lastMintTimestamp + config.cooldownPeriod);
         nextMintTime = lastMintTimestamp + config.cooldownPeriod;
-        ethBalance = address(this).balance;
+        address quoteToken = IRig(targetRig).quote();
+        quoteBalance = IERC20(quoteToken).balanceOf(address(this));
         currentEpochId = IRig(targetRig).epochId();
     }
 

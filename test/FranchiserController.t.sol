@@ -8,6 +8,7 @@ import "../src/MockRig.sol";
 contract FranchiserControllerTest is Test {
     FranchiserController public controller;
     MockRig public mockRig;
+    MockERC20 public quoteToken;
     
     address public owner;
     address public manager;
@@ -17,6 +18,7 @@ contract FranchiserControllerTest is Test {
     
     uint256 constant MAX_PRICE = 0.001 ether;
     uint256 constant MIN_MARGIN = 1000; // 10%
+    uint256 constant INITIAL_QUOTE_BALANCE = 10 ether;
     
     event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId);
     event ConfigUpdated(
@@ -38,8 +40,11 @@ contract FranchiserControllerTest is Test {
         manager = makeAddr("manager");
         user = makeAddr("user");
         
-        // Deploy mock rig
-        mockRig = new MockRig();
+        // Deploy quote token (WETH mock)
+        quoteToken = new MockERC20("Wrapped ETH", "WETH");
+        
+        // Deploy mock rig with quote token
+        mockRig = new MockRig(address(quoteToken));
         
         // Deploy controller
         controller = new FranchiserController(
@@ -50,8 +55,8 @@ contract FranchiserControllerTest is Test {
             MIN_MARGIN
         );
         
-        // Fund controller
-        vm.deal(address(controller), 10 ether);
+        // Fund controller with quote tokens (not ETH)
+        quoteToken.mint(address(controller), INITIAL_QUOTE_BALANCE);
     }
     
     function testDeployment() public {
@@ -93,6 +98,10 @@ contract FranchiserControllerTest is Test {
         
         assertEq(price, 0.0005 ether);
         assertEq(controller.lastMintTimestamp(), block.timestamp);
+        
+        // Quote tokens were transferred to rig
+        assertEq(quoteToken.balanceOf(address(mockRig)), 0.0005 ether);
+        assertEq(quoteToken.balanceOf(address(controller)), INITIAL_QUOTE_BALANCE - 0.0005 ether);
     }
     
     function testExecuteMineNonManager() public {
@@ -128,7 +137,7 @@ contract FranchiserControllerTest is Test {
             bool canMintNow,
             uint256 currentPrice,
             uint256 nextMintTime,
-            uint256 ethBalance,
+            uint256 quoteBalance,
             uint256 currentEpochId
         ) = controller.getMiningStatus();
         
@@ -136,7 +145,7 @@ contract FranchiserControllerTest is Test {
         // canMintNow depends on cooldown and timestamp
         assertEq(currentPrice, 0.0005 ether);
         assertGt(nextMintTime, 0); // Will have cooldown from lastMintTimestamp
-        assertEq(ethBalance, 10 ether);
+        assertEq(quoteBalance, INITIAL_QUOTE_BALANCE);
         assertEq(currentEpochId, 1);
     }
     
@@ -193,7 +202,11 @@ contract FranchiserControllerTest is Test {
     }
     
     function testWithdrawETH() public {
-        uint256 withdrawAmount = 1 ether;
+        // Send some ETH to controller
+        (bool success, ) = address(controller).call{value: 1 ether}("");
+        require(success, "ETH transfer failed");
+        
+        uint256 withdrawAmount = 0.5 ether;
         uint256 balanceBefore = owner.balance;
         uint256 controllerBalanceBefore = address(controller).balance;
         
@@ -209,15 +222,19 @@ contract FranchiserControllerTest is Test {
         controller.withdrawETH(payable(manager), 1 ether);
     }
     
-    function testInsufficientBalance() public {
-        // Drain controller
-        controller.withdrawETH(payable(owner), address(controller).balance);
+    function testInsufficientQuoteBalance() public {
+        // Drain controller's quote tokens by having owner withdraw them
+        uint256 controllerBalance = quoteToken.balanceOf(address(controller));
+        controller.withdrawTokens(address(quoteToken), owner, controllerBalance);
+        
+        // Verify controller is empty
+        assertEq(quoteToken.balanceOf(address(controller)), 0);
         
         // Warp forward to clear cooldown
         vm.warp(block.timestamp + 301);
         
         vm.prank(manager);
-        vm.expectRevert("Insufficient ETH balance");
+        vm.expectRevert("Insufficient quote token balance");
         controller.executeMine(user, "");
     }
     
@@ -243,7 +260,8 @@ contract FranchiserControllerTest is Test {
     }
     
     function testUpdateTargetRig() public {
-        MockRig newRig = new MockRig();
+        MockERC20 newQuoteToken = new MockERC20("New Token", "NEW");
+        MockRig newRig = new MockRig(address(newQuoteToken));
         address oldRig = controller.targetRig();
         
         vm.expectEmit(true, true, false, false);
@@ -255,7 +273,8 @@ contract FranchiserControllerTest is Test {
     }
     
     function testUpdateTargetRigNonOwner() public {
-        MockRig newRig = new MockRig();
+        MockERC20 newQuoteToken = new MockERC20("New Token", "NEW");
+        MockRig newRig = new MockRig(address(newQuoteToken));
         
         vm.prank(manager);
         vm.expectRevert();
@@ -265,5 +284,22 @@ contract FranchiserControllerTest is Test {
     function testUpdateTargetRigZeroAddress() public {
         vm.expectRevert("Invalid rig address");
         controller.updateTargetRig(address(0));
+    }
+    
+    function testWithdrawTokens() public {
+        // Mint some tokens to controller
+        quoteToken.mint(address(controller), 100 ether);
+        
+        uint256 withdrawAmount = 50 ether;
+        
+        controller.withdrawTokens(address(quoteToken), owner, withdrawAmount);
+        
+        assertEq(quoteToken.balanceOf(owner), withdrawAmount);
+    }
+    
+    function testWithdrawTokensNonOwner() public {
+        vm.prank(manager);
+        vm.expectRevert();
+        controller.withdrawTokens(address(quoteToken), manager, 10 ether);
     }
 }

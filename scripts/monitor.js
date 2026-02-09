@@ -22,9 +22,14 @@ const CONTROLLER_ABI = [
   "function targetRig() view returns (address)",
   "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
   "function executeMine(address recipient, string epochUri) external returns (uint256 price)",
-  "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 ethBalance, uint256 currentEpochId)",
+  "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 quoteBalance, uint256 currentEpochId)",
   "function config() view returns (uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
   "event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId)"
+];
+
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)"
 ];
 
 // State
@@ -65,9 +70,27 @@ async function initialize() {
   const network = await provider.getNetwork();
   const targetRig = await controller.targetRig();
   
+  // Get quote token for status display
+  const quoteToken = new ethers.Contract(targetRig, [
+    "function quote() view returns (address)"
+  ], provider);
+  let quoteTokenAddress, quoteTokenSymbol;
+  try {
+    quoteTokenAddress = await quoteToken.quote();
+    const quoteTokenContract = new ethers.Contract(quoteTokenAddress, [
+      "function symbol() view returns (string)"
+    ], provider);
+    quoteTokenSymbol = await quoteTokenContract.symbol();
+  } catch (error) {
+    console.log("⚠️ Could not fetch quote token info");
+  }
+  
   console.log(`✅ Connected to ${network.name} (Chain ID: ${network.chainId})`);
   console.log(`📍 Controller: ${CONTROLLER_ADDRESS}`);
   console.log(`🎯 Target Rig: ${targetRig}`);
+  if (quoteTokenAddress) {
+    console.log(`💰 Quote Token: ${quoteTokenSymbol || ""} (${quoteTokenAddress})`);
+  }
   console.log(`👤 Manager: ${wallet.address}`);
   console.log(`🎁 Recipient: ${RECIPIENT_ADDRESS}`);
   
