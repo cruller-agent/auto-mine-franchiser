@@ -9,11 +9,13 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 // Configuration
-const FRANCHISER_RIG = process.env.FRANCHISER_RIG || "0x9310aF2707c458F52e1c4D48749433454D731060";
+const FRANCHISER_RIG =
+  process.env.FRANCHISER_RIG || "0xA8A6189582ac4cbE0144f70CE330Dd8f06114D8F";
 const OWNER_ADDRESS = process.env.OWNER_ADDRESS;
 const MANAGER_ADDRESS = process.env.MANAGER_ADDRESS;
-const MAX_MINING_PRICE = process.env.MAX_MINING_PRICE || hre.ethers.parseEther("0.001"); // 0.001 ETH default per mine
-const MIN_PROFIT_MARGIN = process.env.MIN_PROFIT_MARGIN || "1000"; // 10% default
+const MAX_MINING_PRICE =
+  process.env.MAX_MINING_PRICE || hre.ethers.parseEther("0.0001"); // 0.001 ETH default per mine
+const MIN_PROFIT_MARGIN = process.env.MIN_PROFIT_MARGIN || "0"; // 10% default
 
 async function main() {
   console.log("🚀 Deploying FranchiserController...\n");
@@ -30,17 +32,21 @@ async function main() {
   console.log(`  Franchiser Rig: ${FRANCHISER_RIG}`);
   console.log(`  Owner: ${OWNER_ADDRESS}`);
   console.log(`  Manager: ${MANAGER_ADDRESS}`);
-  console.log(`  Max Mining Price: ${hre.ethers.formatEther(MAX_MINING_PRICE)} ETH per mine`);
+  console.log(
+    `  Max Mining Price: ${hre.ethers.formatEther(MAX_MINING_PRICE)} ETH per mine`,
+  );
   console.log(`  Min Profit: ${MIN_PROFIT_MARGIN / 100}%\n`);
 
   // Deploy
-  const FranchiserController = await hre.ethers.getContractFactory("FranchiserController");
+  const FranchiserController = await hre.ethers.getContractFactory(
+    "FranchiserController",
+  );
   const controller = await FranchiserController.deploy(
     FRANCHISER_RIG,
     OWNER_ADDRESS,
     MANAGER_ADDRESS,
     MAX_MINING_PRICE,
-    MIN_PROFIT_MARGIN
+    MIN_PROFIT_MARGIN,
   );
 
   await controller.waitForDeployment();
@@ -55,12 +61,14 @@ async function main() {
   console.log(`  1. Add CONTROLLER_ADDRESS=${address} to your .env file`);
   console.log(`  2. Fund the controller with ETH: send ETH to ${address}`);
   console.log(`  3. Start the monitor: npm run monitor`);
-  console.log(`  4. View on BaseScan: https://basescan.org/address/${address}\n`);
+  console.log(
+    `  4. View on BaseScan: https://basescan.org/address/${address}\n`,
+  );
 
   // Verify on BaseScan (if API key provided)
   if (process.env.BASESCAN_API_KEY) {
     console.log("⏳ Waiting 30s before verification...");
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    await new Promise((resolve) => setTimeout(resolve, 30000));
 
     try {
       console.log("🔍 Verifying contract on BaseScan...");
@@ -76,7 +84,10 @@ async function main() {
       });
       console.log("✅ Contract verified!");
     } catch (error) {
-      console.log("⚠️  Verification failed (may already be verified):", error.message);
+      console.log(
+        "⚠️  Verification failed (may already be verified):",
+        error.message,
+      );
     }
   }
 }
