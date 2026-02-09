@@ -39,11 +39,41 @@ async function main() {
 
   console.log("⚙️  Auto-Mine Franchiser Status\n");
   console.log(`📍 Controller: ${CONTROLLER_ADDRESS}`);
+  console.log(`🌐 RPC: ${RPC_URL}`);
+  
+  // Test RPC connection
+  try {
+    const network = await provider.getNetwork();
+    console.log(`🔗 Network: ${network.name} (Chain ID: ${network.chainId})`);
+  } catch (error) {
+    console.warn(`⚠️  Warning: Could not get network info: ${error.message}`);
+  }
+  console.log("");
 
   try {
+    // Verify contract exists
+    const code = await provider.getCode(CONTROLLER_ADDRESS);
+    if (code === "0x") {
+      throw new Error(`No contract found at address ${CONTROLLER_ADDRESS}. Is the contract deployed?`);
+    }
+
     // Get rig address
-    const targetRig = await controller.targetRig();
+    let targetRig;
+    try {
+      targetRig = await controller.targetRig();
+      if (!targetRig || targetRig === ethers.ZeroAddress) {
+        throw new Error("Target rig address is not set or is zero address");
+      }
+    } catch (error) {
+      throw new Error(`Failed to get target rig address: ${error.message}`);
+    }
     console.log(`🎯 Target Rig: ${targetRig}`);
+    
+    // Verify rig contract exists
+    const rigCode = await provider.getCode(targetRig);
+    if (rigCode === "0x") {
+      console.warn(`⚠️  Warning: No contract found at rig address ${targetRig}. Some operations may fail.`);
+    }
     
     // Get quote token info
     let quoteSymbol = "???";
@@ -64,18 +94,47 @@ async function main() {
     const config = await controller.config();
     console.log("⚙️  Configuration:");
     console.log(`  Max Mining Price: ${ethers.formatUnits(config.maxMiningPrice, quoteDecimals)} ${quoteSymbol} per mine`);
-    console.log(`  Min Profit: ${config.minProfitMargin / 100}%`);
+    console.log(`  Min Profit: ${Number(config.minProfitMargin) / 100}%`);
     console.log(`  Mint Range: ${ethers.formatEther(config.minMintAmount)} - ${ethers.formatEther(config.maxMintAmount)} tokens`);
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);
-    console.log(`  Cooldown: ${config.cooldownPeriod}s`);
-    console.log(`  Max Gas: ${config.maxGasPrice} gwei`);
-    console.log(`  Time-Based Mint Period: ${config.timeBasedMintPeriod}s\n`);
+    console.log(`  Cooldown: ${Number(config.cooldownPeriod)}s`);
+    console.log(`  Max Gas: ${Number(config.maxGasPrice)} gwei`);
+    console.log(`  Time-Based Mint Period: ${Number(config.timeBasedMintPeriod)}s\n`);
 
     // Get mining status
-    const status = await controller.getMiningStatus();
+    let status;
+    try {
+      status = await controller.getMiningStatus();
+    } catch (error) {
+      if (error.code === "CALL_EXCEPTION" || error.message.includes("missing revert data")) {
+        // Try using direct provider call as fallback
+        try {
+          console.log("⚠️  Standard call failed, trying direct provider call...");
+          const iface = new ethers.Interface(CONTROLLER_ABI);
+          const data = iface.encodeFunctionData("getMiningStatus", []);
+          const result = await provider.call({
+            to: CONTROLLER_ADDRESS,
+            data: data
+          });
+          status = iface.decodeFunctionResult("getMiningStatus", result);
+          console.log("✅ Direct call succeeded\n");
+        } catch (error2) {
+          throw new Error(`Failed to get mining status. This usually means:\n` +
+            `  1. The rig contract at ${targetRig} doesn't exist or is invalid\n` +
+            `  2. The rig contract doesn't implement the required interface\n` +
+            `  3. There's a network connectivity issue with RPC ${RPC_URL}\n` +
+            `  4. The RPC endpoint may be rate-limited or having issues\n\n` +
+            `Try using a different RPC endpoint (set BASE_RPC_URL in .env) or check network connectivity.\n` +
+            `Original error: ${error.message}\n` +
+            `Fallback error: ${error2.message}`);
+        }
+      } else {
+        throw error;
+      }
+    }
     console.log("📊 Mining Status:");
     console.log(`  Current Price: ${ethers.formatUnits(status.currentPrice, quoteDecimals)} ${quoteSymbol}`);
-    console.log(`  Epoch: ${status.currentEpochId}`);
+    console.log(`  Epoch: ${Number(status.currentEpochId)}`);
     console.log(`  Quote Balance: ${ethers.formatUnits(status.quoteBalance, quoteDecimals)} ${quoteSymbol}`);
     console.log(`  Can Mint Now: ${status.canMintNow ? "✅ YES" : "❌ NO"}`);
     console.log(`  Price Condition: ${status.priceConditionMet ? "✅ MET" : "❌ NOT MET"}`);
@@ -97,7 +156,21 @@ async function main() {
     console.log("");
 
     // Check profitability
-    const [isProfitable, currentPrice, recommendedAmount, reason] = await controller.checkProfitability();
+    let isProfitable, currentPrice, recommendedAmount, reason;
+    try {
+      [isProfitable, currentPrice, recommendedAmount, reason] = await controller.checkProfitability();
+    } catch (error) {
+      if (error.code === "CALL_EXCEPTION" || error.message.includes("missing revert data")) {
+        console.warn(`⚠️  Warning: Could not check profitability. This may be due to rig contract issues.`);
+        console.warn(`   Error: ${error.message}\n`);
+        isProfitable = false;
+        currentPrice = 0n;
+        recommendedAmount = 0n;
+        reason = 2n;
+      } else {
+        throw error;
+      }
+    }
     const reasonText = reason === 0n ? "Price-based" : reason === 1n ? "Time-based" : "Not profitable";
     console.log("💰 Profitability:");
     console.log(`  Status: ${isProfitable ? "✅ PROFITABLE" : "❌ NOT PROFITABLE"}`);
@@ -134,6 +207,12 @@ async function main() {
 
   } catch (error) {
     console.error("\n❌ Error:", error.message);
+    if (error.code) {
+      console.error(`   Error code: ${error.code}`);
+    }
+    if (error.data) {
+      console.error(`   Error data: ${error.data}`);
+    }
     process.exit(1);
   }
 }

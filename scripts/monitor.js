@@ -143,14 +143,14 @@ async function displayConfig() {
     
     console.log("\n📋 Current Configuration:");
     console.log(`  Max Mining Price: ${ethers.formatUnits(config.maxMiningPrice, quoteDecimals)} ${quoteSymbol} per mine`);
-    console.log(`  Min Profit Margin: ${config.minProfitMargin / 100}%`);
+    console.log(`  Min Profit Margin: ${Number(config.minProfitMargin) / 100}%`);
     console.log(`  Mint Range: ${ethers.formatEther(config.minMintAmount)} - ${ethers.formatEther(config.maxMintAmount)} tokens`);
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);
-    console.log(`  Cooldown: ${config.cooldownPeriod}s`);
-    console.log(`  Max Gas: ${config.maxGasPrice} gwei`);
-    console.log(`  Time-Based Mint Period: ${config.timeBasedMintPeriod}s`);
+    console.log(`  Cooldown: ${config.cooldownPeriod.toString()}s`);
+    console.log(`  Max Gas: ${config.maxGasPrice.toString()} gwei`);
+    console.log(`  Time-Based Mint Period: ${config.timeBasedMintPeriod.toString()}s`);
     console.log(`  Controller Quote Balance: ${ethers.formatUnits(status.quoteBalance, quoteDecimals)} ${quoteSymbol}`);
-    console.log(`  Current Epoch: ${status.currentEpochId}`);
+    console.log(`  Current Epoch: ${status.currentEpochId.toString()}`);
   } catch (error) {
     console.error("❌ Failed to fetch config:", error.message);
   }
@@ -200,7 +200,7 @@ async function checkAndMine() {
     const timestamp = new Date().toISOString();
     
     console.log(`[${timestamp}] Check #${stats.checksPerformed}`);
-    console.log(`  Price: ${formattedPrice} ${quoteSymbol} | Epoch: ${status.currentEpochId} | Balance: ${formattedBalance} ${quoteSymbol}`);
+    console.log(`  Price: ${formattedPrice} ${quoteSymbol} | Epoch: ${status.currentEpochId.toString()} | Balance: ${formattedBalance} ${quoteSymbol}`);
     
     // Show condition status
     if (status.priceConditionMet) {
