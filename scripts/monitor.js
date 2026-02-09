@@ -23,10 +23,10 @@ const CONTROLLER_ABI = [
   "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
   "function executeMine(address recipient, string epochUri) external returns (uint256 price)",
   "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 quoteBalance, uint256 currentEpochId)",
-  "function config() view returns (uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
+  "function config() view returns (uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
   "function updateTargetRig(address newRig) external",
   "event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId)",
-  "event ConfigUpdated(uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
+  "event ConfigUpdated(uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
   "event TargetRigUpdated(address indexed oldRig, address indexed newRig)"
 ];
 
@@ -142,7 +142,7 @@ async function displayConfig() {
     }
     
     console.log("\n📋 Current Configuration:");
-    console.log(`  Max Price Per Token: ${ethers.formatUnits(config.maxPricePerToken, quoteDecimals)} ${quoteSymbol}`);
+    console.log(`  Max Mining Price: ${ethers.formatUnits(config.maxMiningPrice, quoteDecimals)} ${quoteSymbol} per mine`);
     console.log(`  Min Profit Margin: ${config.minProfitMargin / 100}%`);
     console.log(`  Mint Range: ${ethers.formatEther(config.minMintAmount)} - ${ethers.formatEther(config.maxMintAmount)} tokens`);
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);

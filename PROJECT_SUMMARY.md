@@ -27,7 +27,7 @@ Continuously monitors a configured Franchiser Rig contract and automatically min
   - Emergency stop mechanism
 - **Configuration stored onchain:**
   - Target rig address (updatable)
-  - Max price per token
+  - Max mining price (one-time price per mining action)
   - Profit margin requirements
   - Mint amount limits
   - Timing constraints
@@ -74,7 +74,7 @@ Continuously monitors a configured Franchiser Rig contract and automatically min
 | Parameter | Owner Updatable? | Default | Description |
 |-----------|-----------------|---------|-------------|
 | `targetRig` | ✅ Yes | Set at deploy | Target Rig contract to mine |
-| `maxPricePerToken` | ✅ Yes | 0.001 ETH | Maximum price to pay |
+| `maxMiningPrice` | ✅ Yes | 0.001 ETH | Maximum price to pay per mining action |
 | `minProfitMargin` | ✅ Yes | 10% | Minimum profit required |
 | `cooldownPeriod` | ✅ Yes | 300s | Time between mints |
 | `maxGasPrice` | ✅ Yes | 10 gwei | Gas price limit |

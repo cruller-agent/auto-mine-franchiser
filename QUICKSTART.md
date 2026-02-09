@@ -32,7 +32,7 @@ OWNER_ADDRESS=0x...
 MANAGER_ADDRESS=0x...
 
 # Mining settings (adjust as needed)
-MAX_PRICE_PER_TOKEN=1000000000000000  # 0.001 ETH
+MAX_MINING_PRICE=1000000000000000  # 0.001 ETH per mining action
 ```
 
 ## 3️⃣ Deploy
@@ -88,7 +88,7 @@ Output:
 🎯 Target Rig: 0x9310aF...
 
 ⚙️  Configuration:
-  Max Price: 0.001 ETH/token
+  Max Mining Price: 0.001 ETH
   Auto Mining: ✅ ENABLED
   ETH Balance: 0.1 ETH
 
@@ -154,7 +154,7 @@ journalctl -u auto-mine-franchiser -f
 → Fund the controller with more ETH
 
 **"Price too high"**  
-→ Adjust `MAX_PRICE_PER_TOKEN` or wait for better price
+→ Adjust `MAX_MINING_PRICE` or wait for better price
 
 **"Cooldown active"**  
 → Normal - bot enforces cooldown between mints
