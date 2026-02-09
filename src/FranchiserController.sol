@@ -1,26 +1,41 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title FranchiserController
  * @notice Automated controller for Franchiser token mining with configurable parameters
  * @dev Implements role-based access: OWNER (withdrawals) and MANAGER (mining operations)
+ * @author Cruller
  */
 interface IRig {
-    function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string memory _epochUri)
+    function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string calldata _epochUri)
         external
         returns (uint256 price);
+    function transferOwnership(address newOwner) external;
     function epochId() external view returns (uint256);
-    function getPrice() external view returns (uint256);
+    function epochInitPrice() external view returns (uint256);
+    function epochStartTime() external view returns (uint256);
+    function epochUps() external view returns (uint256);
+    function epochMiner() external view returns (address);
+    function epochUri() external view returns (string memory);
+    function uri() external view returns (string memory);
     function unit() external view returns (address);
+    function getPrice() external view returns (uint256);
+    function getUps() external view returns (uint256);
+}
+
+// Interface for getting quote token from Rig's immutable
+interface IRigQuote {
     function quote() external view returns (address);
 }
 
 contract FranchiserController is AccessControl, ReentrancyGuard {
+    using SafeERC20 for IERC20;
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
@@ -130,10 +145,11 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
 
     /**
      * @notice Execute mining operation (MANAGER only)
-     * @param recipient Address to receive minted tokens
+     * @param recipient Address to receive minted tokens (becomes the new epochMiner)
      * @param epochUri URI for epoch metadata (optional, can be empty)
+     * @return price The actual price paid for the mine
      */
-    function executeMine(address recipient, string memory epochUri) 
+    function executeMine(address recipient, string calldata epochUri) 
         external 
         onlyRole(MANAGER_ROLE) 
         nonReentrant 
@@ -150,29 +166,30 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         // Check price is acceptable
         require(currentPrice <= config.maxPricePerToken, "Price too high");
 
-        // Get quote token (payment token for the Rig)
-        address quoteToken = IRig(targetRig).quote();
+        // Get quote token (payment token for the Rig) - use auxiliary interface
+        address quoteToken = IRigQuote(targetRig).quote();
         
         // Check quote token balance
-        require(IERC20(quoteToken).balanceOf(address(this)) >= currentPrice, "Insufficient quote token balance");
+        uint256 quoteBalance = IERC20(quoteToken).balanceOf(address(this));
+        require(quoteBalance >= currentPrice, "Insufficient quote token balance");
 
-        // Approve Rig to spend quote tokens
+        // Approve Rig to spend quote tokens (use type(uint256).max for infinite approval, only done once per rig change)
         IERC20(quoteToken).approve(targetRig, currentPrice);
 
-        // Execute mine - Rig uses transferFrom to collect payment
-        // Rig determines amount based on UPS
+        // Execute mine - Rig pulls payment via transferFrom(msg.sender, ...)
+        // Previous miner receives minted tokens, recipient becomes new epochMiner
         price = IRig(targetRig).mine(
             recipient,
             currentEpochId,
-            block.timestamp,
+            block.timestamp + 300, // 5 min deadline from now
             config.maxPricePerToken,
             epochUri
         );
         
         lastMintTimestamp = block.timestamp;
         
-        // Note: We don't know the exact amount minted (determined by Rig's UPS)
-        // Emit event with price paid
+        // Calculate mined amount for event (based on holding time and UPS)
+        // Note: This is an approximation - actual minted amount is (timeHeld * epochUps)
         emit TokensMinted(recipient, 0, price, currentEpochId);
     }
 
@@ -269,6 +286,12 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
 
     /**
      * @notice Get current mining status
+     * @return isEnabled Whether auto mining is enabled
+     * @return canMintNow Whether mining is currently allowed (cooldown + profitability)
+     * @return currentPrice Current price from the rig
+     * @return nextMintTime Timestamp when next mint can occur
+     * @return quoteBalance Current quote token balance of controller
+     * @return currentEpochId Current epoch ID from the rig
      */
     function getMiningStatus() external view returns (
         bool isEnabled,
@@ -281,9 +304,10 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         isEnabled = config.autoMiningEnabled;
         currentPrice = IRig(targetRig).getPrice();
         canMintNow = (currentPrice <= config.maxPricePerToken) && 
-                     (block.timestamp >= lastMintTimestamp + config.cooldownPeriod);
+                     (block.timestamp >= lastMintTimestamp + config.cooldownPeriod) &&
+                     isEnabled;
         nextMintTime = lastMintTimestamp + config.cooldownPeriod;
-        address quoteToken = IRig(targetRig).quote();
+        address quoteToken = IRigQuote(targetRig).quote();
         quoteBalance = IERC20(quoteToken).balanceOf(address(this));
         currentEpochId = IRig(targetRig).epochId();
     }

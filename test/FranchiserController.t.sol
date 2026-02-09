@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.19;
 
 import "forge-std/Test.sol";
 import "../src/FranchiserController.sol";
@@ -40,11 +40,12 @@ contract FranchiserControllerTest is Test {
         manager = makeAddr("manager");
         user = makeAddr("user");
         
-        // Deploy quote token (WETH mock)
+        // Deploy tokens
         quoteToken = new MockERC20("Wrapped ETH", "WETH");
+        MockERC20 unitToken = new MockERC20("Test Unit", "TEST");
         
-        // Deploy mock rig with quote token
-        mockRig = new MockRig(address(quoteToken));
+        // Deploy mock rig with quote token and unit token
+        mockRig = new MockRig(address(quoteToken), address(unitToken));
         
         // Deploy controller
         controller = new FranchiserController(

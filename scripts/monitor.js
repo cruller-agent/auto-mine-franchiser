@@ -24,7 +24,17 @@ const CONTROLLER_ABI = [
   "function executeMine(address recipient, string epochUri) external returns (uint256 price)",
   "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 quoteBalance, uint256 currentEpochId)",
   "function config() view returns (uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
-  "event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId)"
+  "function updateTargetRig(address newRig) external",
+  "event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId)",
+  "event ConfigUpdated(uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
+  "event TargetRigUpdated(address indexed oldRig, address indexed newRig)"
+];
+
+// Rig ABI for fetching quote token
+const RIG_ABI = [
+  "function quote() view returns (address)",
+  "function unit() view returns (address)",
+  "function getPrice() view returns (uint256)"
 ];
 
 const ERC20_ABI = [
@@ -42,7 +52,7 @@ let stats = {
   checksPerformed: 0,
   mintsExecuted: 0,
   totalTokensMinted: 0,
-  totalETHSpent: 0,
+  totalSpent: 0, // Generic spending tracker (quote token)
   errors: 0,
   lastMintTime: null,
 };
@@ -71,12 +81,13 @@ async function initialize() {
   const targetRig = await controller.targetRig();
   
   // Get quote token for status display
-  const quoteToken = new ethers.Contract(targetRig, [
+  const rigContract = new ethers.Contract(targetRig, [
     "function quote() view returns (address)"
   ], provider);
+  
   let quoteTokenAddress, quoteTokenSymbol;
   try {
-    quoteTokenAddress = await quoteToken.quote();
+    quoteTokenAddress = await rigContract.quote();
     const quoteTokenContract = new ethers.Contract(quoteTokenAddress, [
       "function symbol() view returns (string)"
     ], provider);
@@ -108,14 +119,36 @@ async function displayConfig() {
     const config = await controller.config();
     const status = await controller.getMiningStatus();
     
+    // Get quote token info for proper display
+    const targetRig = await controller.targetRig();
+    const rigContract = new ethers.Contract(targetRig, [
+      "function quote() view returns (address)",
+      "function unit() view returns (address)"
+    ], provider);
+    
+    let quoteSymbol = "ETH";
+    let quoteDecimals = 18;
+    
+    try {
+      const quoteToken = await rigContract.quote();
+      const quoteContract = new ethers.Contract(quoteToken, [
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)"
+      ], provider);
+      quoteSymbol = await quoteContract.symbol();
+      quoteDecimals = await quoteContract.decimals();
+    } catch (e) {
+      // Use defaults
+    }
+    
     console.log("\n📋 Current Configuration:");
-    console.log(`  Max Price Per Token: ${ethers.formatEther(config.maxPricePerToken)} ETH`);
+    console.log(`  Max Price Per Token: ${ethers.formatUnits(config.maxPricePerToken, quoteDecimals)} ${quoteSymbol}`);
     console.log(`  Min Profit Margin: ${config.minProfitMargin / 100}%`);
     console.log(`  Mint Range: ${ethers.formatEther(config.minMintAmount)} - ${ethers.formatEther(config.maxMintAmount)} tokens`);
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);
     console.log(`  Cooldown: ${config.cooldownPeriod}s`);
     console.log(`  Max Gas: ${config.maxGasPrice} gwei`);
-    console.log(`  Controller Balance: ${ethers.formatEther(status.ethBalance)} ETH`);
+    console.log(`  Controller Quote Balance: ${ethers.formatUnits(status.quoteBalance, quoteDecimals)} ${quoteSymbol}`);
     console.log(`  Current Epoch: ${status.currentEpochId}`);
   } catch (error) {
     console.error("❌ Failed to fetch config:", error.message);
@@ -132,6 +165,27 @@ async function checkAndMine() {
     // Get mining status
     const status = await controller.getMiningStatus();
     
+    // Get quote token info for display
+    const targetRig = await controller.targetRig();
+    const rigContract = new ethers.Contract(targetRig, [
+      "function quote() view returns (address)"
+    ], provider);
+    
+    let quoteSymbol = "ETH";
+    let quoteDecimals = 18;
+    
+    try {
+      const quoteToken = await rigContract.quote();
+      const quoteContract = new ethers.Contract(quoteToken, [
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)"
+      ], provider);
+      quoteSymbol = await quoteContract.symbol();
+      quoteDecimals = await quoteContract.decimals();
+    } catch (e) {
+      // Use defaults
+    }
+    
     if (!status.isEnabled) {
       console.log("⏸️  Auto mining disabled");
       return;
@@ -140,11 +194,12 @@ async function checkAndMine() {
     // Check profitability
     const [isProfitable, currentPrice, recommendedAmount] = await controller.checkProfitability();
     
-    const priceETH = ethers.formatEther(currentPrice);
+    const formattedPrice = ethers.formatUnits(currentPrice, quoteDecimals);
+    const formattedBalance = ethers.formatUnits(status.quoteBalance, quoteDecimals);
     const timestamp = new Date().toISOString();
     
     console.log(`[${timestamp}] Check #${stats.checksPerformed}`);
-    console.log(`  Price: ${priceETH} ETH/token | Epoch: ${status.currentEpochId} | Balance: ${ethers.formatEther(status.ethBalance)} ETH`);
+    console.log(`  Price: ${formattedPrice} ${quoteSymbol} | Epoch: ${status.currentEpochId} | Balance: ${formattedBalance} ${quoteSymbol}`);
     
     if (!status.canMintNow) {
       const nextMint = new Date(Number(status.nextMintTime) * 1000);
@@ -159,7 +214,7 @@ async function checkAndMine() {
 
     // Execute mine (note: actual amount minted determined by Rig's UPS)
     console.log(`  ✅ PROFITABLE! Executing mine...`);
-    console.log(`  Price: ${ethers.formatEther(currentPrice)} ETH`);
+    console.log(`  Price: ${formattedPrice} ${quoteSymbol}`);
     
     const tx = await controller.executeMine(RECIPIENT_ADDRESS, "", {
       gasLimit: 500000, // Safety limit
@@ -184,16 +239,16 @@ async function checkAndMine() {
       
       if (event) {
         const amount = ethers.formatEther(event.args.amount);
-        const cost = ethers.formatEther(event.args.cost);
+        const cost = ethers.formatUnits(event.args.cost, quoteDecimals);
         const epochId = event.args.epochId.toString();
         
         stats.mintsExecuted++;
         stats.totalTokensMinted += parseFloat(amount);
-        stats.totalETHSpent += parseFloat(cost);
+        stats.totalSpent += parseFloat(cost); // Generic spending tracker
         stats.lastMintTime = new Date();
         
         console.log(`  ✅ MINT SUCCESSFUL!`);
-        console.log(`  Tokens: ${amount} | Cost: ${cost} ETH | Epoch: ${epochId}`);
+        console.log(`  Tokens: ${amount} | Cost: ${cost} ${quoteSymbol} | Epoch: ${epochId}`);
         console.log(`  TX: https://basescan.org/tx/${receipt.hash}`);
       }
     } else {
@@ -210,8 +265,8 @@ async function checkAndMine() {
       console.log("⏳ Cooldown active, waiting...");
     } else if (error.message.includes("Price too high")) {
       console.log("⛔ Price too high, waiting for better opportunity...");
-    } else if (error.message.includes("Insufficient ETH balance")) {
-      console.log("❌ Insufficient ETH in controller. Please fund the contract!");
+    } else if (error.message.includes("Insufficient quote token balance")) {
+      console.log("❌ Insufficient quote token balance. Please fund the controller with WETH!");
     } else {
       console.error(`❌ Error during check: ${error.message}`);
     }

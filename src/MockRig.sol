@@ -1,59 +1,106 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title MockRig
  * @notice Mock Rig contract for testing that matches the actual IRig interface
  * Uses ERC20 transferFrom for payment (like real Rig)
+ * Implements full IRig interface from Heesho's reference
  */
-contract MockRig {
+contract MockRig is Ownable {
     using SafeERC20 for IERC20;
     
     uint256 private _currentPrice = 0.0005 ether;
     uint256 private _epochId = 1;
-    address private _unit = address(0x1234567890123456789012345678901234567890);
+    uint256 private _epochInitPrice = 0.001 ether;
+    uint256 private _epochStartTime;
+    uint256 private _epochUps = 1e18;
+    address private _epochMiner;
+    string private _epochUri = "";
+    string private _uri = "mock://uri";
+    
+    address private _unit;
     address private _quote; // Payment token (e.g., WETH)
     
-    constructor(address quoteToken_) {
+    constructor(address quoteToken_, address unitToken_) {
         _quote = quoteToken_;
+        _unit = unitToken_;
+        _epochMiner = msg.sender;
+        _epochStartTime = block.timestamp;
     }
     
-    function mine(address miner, uint256 _epochId, uint256 deadline, uint256 maxPrice, string memory _epochUri)
+    function mine(address miner, uint256 epochId_, uint256 deadline, uint256 maxPrice, string calldata epochUri_)
         external
         returns (uint256 price)
     {
-        require(_epochId == epochId(), "Invalid epoch");
-        require(block.timestamp <= deadline, "Expired");
+        require(epochId_ == _epochId, "Rig__EpochIdMismatch");
+        require(block.timestamp <= deadline, "Rig__Expired");
         
         price = getPrice();
-        require(price <= maxPrice, "Max price exceeded");
+        require(price <= maxPrice, "Rig__MaxPriceExceeded");
+        require(miner != address(0), "Rig__InvalidMiner");
         
         // Pull payment via transferFrom (like real Rig)
         IERC20(_quote).safeTransferFrom(msg.sender, address(this), price);
         
-        // Increment epoch
-        _epochId++;
+        // Update state for new epoch
+        _epochMiner = miner;
+        _epochStartTime = block.timestamp;
+        _epochUri = epochUri_;
+        unchecked {
+            _epochId++;
+        }
         
         return price;
     }
     
-    function epochId() public view returns (uint256) {
+    // IRig interface implementation
+    function epochId() external view returns (uint256) {
         return _epochId;
+    }
+    
+    function epochInitPrice() external view returns (uint256) {
+        return _epochInitPrice;
+    }
+    
+    function epochStartTime() external view returns (uint256) {
+        return _epochStartTime;
+    }
+    
+    function epochUps() external view returns (uint256) {
+        return _epochUps;
+    }
+    
+    function epochMiner() external view returns (address) {
+        return _epochMiner;
+    }
+    
+    function epochUri() external view returns (string memory) {
+        return _epochUri;
+    }
+    
+    function uri() external view returns (string memory) {
+        return _uri;
+    }
+    
+    function unit() external view returns (address) {
+        return _unit;
+    }
+    
+    function quote() external view returns (address) {
+        return _quote;
     }
     
     function getPrice() public view returns (uint256) {
         return _currentPrice;
     }
     
-    function unit() public view returns (address) {
-        return _unit;
-    }
-    
-    function quote() external view returns (address) {
-        return _quote;
+    function getUps() external view returns (uint256) {
+        return _epochUps;
     }
     
     // Test helpers
@@ -63,6 +110,10 @@ contract MockRig {
     
     function setEpoch(uint256 newEpoch) external {
         _epochId = newEpoch;
+    }
+    
+    function setEpochUps(uint256 newUps) external {
+        _epochUps = newUps;
     }
 }
 
