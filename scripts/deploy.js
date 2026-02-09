@@ -12,7 +12,7 @@ dotenv.config();
 const FRANCHISER_RIG = process.env.FRANCHISER_RIG || "0x9310aF2707c458F52e1c4D48749433454D731060";
 const OWNER_ADDRESS = process.env.OWNER_ADDRESS;
 const MANAGER_ADDRESS = process.env.MANAGER_ADDRESS;
-const MAX_PRICE_PER_TOKEN = process.env.MAX_PRICE_PER_TOKEN || hre.ethers.parseEther("0.001"); // 0.001 ETH default
+const MAX_MINING_PRICE = process.env.MAX_MINING_PRICE || hre.ethers.parseEther("0.001"); // 0.001 ETH default per mine
 const MIN_PROFIT_MARGIN = process.env.MIN_PROFIT_MARGIN || "1000"; // 10% default
 
 async function main() {
@@ -30,7 +30,7 @@ async function main() {
   console.log(`  Franchiser Rig: ${FRANCHISER_RIG}`);
   console.log(`  Owner: ${OWNER_ADDRESS}`);
   console.log(`  Manager: ${MANAGER_ADDRESS}`);
-  console.log(`  Max Price: ${hre.ethers.formatEther(MAX_PRICE_PER_TOKEN)} ETH/token`);
+  console.log(`  Max Mining Price: ${hre.ethers.formatEther(MAX_MINING_PRICE)} ETH per mine`);
   console.log(`  Min Profit: ${MIN_PROFIT_MARGIN / 100}%\n`);
 
   // Deploy
@@ -39,7 +39,7 @@ async function main() {
     FRANCHISER_RIG,
     OWNER_ADDRESS,
     MANAGER_ADDRESS,
-    MAX_PRICE_PER_TOKEN,
+    MAX_MINING_PRICE,
     MIN_PROFIT_MARGIN
   );
 
@@ -70,7 +70,7 @@ async function main() {
           FRANCHISER_RIG,
           OWNER_ADDRESS,
           MANAGER_ADDRESS,
-          MAX_PRICE_PER_TOKEN,
+          MAX_MINING_PRICE,
           MIN_PROFIT_MARGIN,
         ],
       });

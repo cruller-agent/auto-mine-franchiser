@@ -44,7 +44,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     
     // Configuration parameters
     struct Config {
-        uint256 maxPricePerToken;      // Maximum price willing to pay per token (in wei)
+        // Maximum total price willing to pay for a single mining action (per mine, NOT per token)
+        uint256 maxMiningPrice;
         uint256 minProfitMargin;       // Minimum profit margin required (basis points, e.g., 1000 = 10%)
         uint256 maxMintAmount;         // Maximum tokens to mint per transaction
         uint256 minMintAmount;         // Minimum tokens to mint per transaction
@@ -58,7 +59,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     
     // Events
     event ConfigUpdated(
-        uint256 maxPricePerToken,
+        uint256 maxMiningPrice,
         uint256 minProfitMargin,
         uint256 maxMintAmount,
         uint256 minMintAmount,
@@ -76,7 +77,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         address _targetRig,
         address _owner,
         address _manager,
-        uint256 _maxPricePerToken,
+        uint256 _maxMiningPrice,
         uint256 _minProfitMargin
     ) {
         require(_targetRig != address(0), "Invalid rig address");
@@ -91,7 +92,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
 
         // Initialize config with sensible defaults
         config = Config({
-            maxPricePerToken: _maxPricePerToken,
+            maxMiningPrice: _maxMiningPrice,
             minProfitMargin: _minProfitMargin,
             maxMintAmount: 100 ether,
             minMintAmount: 1 ether,
@@ -129,14 +130,14 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     {
         currentPrice = IRig(targetRig).getPrice();
         
-        // Check if price is below max threshold
-        if (currentPrice > config.maxPricePerToken) {
+        // Check if price is below max threshold for a single mining action
+        if (currentPrice > config.maxMiningPrice) {
             return (false, currentPrice, 0);
         }
 
         // Calculate profit margin (simplified - assumes external price oracle would be used)
-        // For now, just check if we're below max price
-        isProfitable = currentPrice <= config.maxPricePerToken;
+        // For now, just check if the one-time mining price is below our max threshold
+        isProfitable = currentPrice <= config.maxMiningPrice;
         
         // Note: Rig's mine() function doesn't take amount - it mints based on current UPS
         // So recommendedAmount is informational only
@@ -163,8 +164,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         uint256 currentEpochId = IRig(targetRig).epochId();
         uint256 currentPrice = IRig(targetRig).getPrice();
         
-        // Check price is acceptable
-        require(currentPrice <= config.maxPricePerToken, "Price too high");
+        // Check price is acceptable for this mining action
+        require(currentPrice <= config.maxMiningPrice, "Price too high");
 
         // Get quote token (payment token for the Rig) - use auxiliary interface
         address quoteToken = IRigQuote(targetRig).quote();
@@ -182,7 +183,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
             recipient,
             currentEpochId,
             block.timestamp + 300, // 5 min deadline from now
-            config.maxPricePerToken,
+            config.maxMiningPrice,
             epochUri
         );
         
@@ -197,7 +198,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
      * @notice Update configuration (OWNER only)
      */
     function updateConfig(
-        uint256 _maxPricePerToken,
+        uint256 _maxMiningPrice,
         uint256 _minProfitMargin,
         uint256 _maxMintAmount,
         uint256 _minMintAmount,
@@ -209,7 +210,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         require(_cooldownPeriod <= 1 days, "Cooldown too long");
         require(_maxGasPrice > 0, "Invalid gas price");
 
-        config.maxPricePerToken = _maxPricePerToken;
+        config.maxMiningPrice = _maxMiningPrice;
         config.minProfitMargin = _minProfitMargin;
         config.maxMintAmount = _maxMintAmount;
         config.minMintAmount = _minMintAmount;
@@ -218,7 +219,7 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
         config.maxGasPrice = _maxGasPrice;
 
         emit ConfigUpdated(
-            _maxPricePerToken,
+            _maxMiningPrice,
             _minProfitMargin,
             _maxMintAmount,
             _minMintAmount,
@@ -303,7 +304,8 @@ contract FranchiserController is AccessControl, ReentrancyGuard {
     ) {
         isEnabled = config.autoMiningEnabled;
         currentPrice = IRig(targetRig).getPrice();
-        canMintNow = (currentPrice <= config.maxPricePerToken) && 
+        // Mining is allowed if the current one-time mining price is below our max threshold
+        canMintNow = (currentPrice <= config.maxMiningPrice) && 
                      (block.timestamp >= lastMintTimestamp + config.cooldownPeriod) &&
                      isEnabled;
         nextMintTime = lastMintTimestamp + config.cooldownPeriod;

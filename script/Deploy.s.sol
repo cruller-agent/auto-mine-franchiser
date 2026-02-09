@@ -10,7 +10,7 @@ contract DeployScript is Script {
         address targetRig = vm.envAddress("TARGET_RIG");  // Required - no default
         address owner = vm.envAddress("OWNER_ADDRESS");
         address manager = vm.envAddress("MANAGER_ADDRESS");
-        uint256 maxPrice = vm.envOr("MAX_PRICE_PER_TOKEN", uint256(0.001 ether));
+        uint256 maxPrice = vm.envOr("MAX_MINING_PRICE", uint256(0.001 ether));
         uint256 minMargin = vm.envOr("MIN_PROFIT_MARGIN", uint256(1000));
         
         console.log("Deploying FranchiserController...");

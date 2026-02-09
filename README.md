@@ -93,7 +93,7 @@ MANAGER_PRIVATE_KEY=0x...
 MANAGER_ADDRESS=0x...
 
 # Mining parameters
-MAX_PRICE_PER_TOKEN=1000000000000000    # 0.001 ETH max price
+MAX_MINING_PRICE=1000000000000000    # 0.001 ETH max mining price (per mine)
 MIN_PROFIT_MARGIN=1000                   # 10% minimum profit
 ```
 
@@ -158,7 +158,7 @@ All parameters are stored in the smart contract and can be updated by the owner:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `targetRig` | Target Rig contract address to mine | Set at deployment |
-| `maxPricePerToken` | Maximum price willing to pay per token | 0.001 ETH |
+| `maxMiningPrice` | Maximum total price willing to pay per mining action | 0.001 ETH |
 | `minProfitMargin` | Minimum profit margin (basis points) | 1000 (10%) |
 | `maxMintAmount` | Maximum tokens per transaction | 100 tokens |
 | `minMintAmount` | Minimum tokens per transaction | 1 token |
@@ -215,9 +215,9 @@ Can:
 
 ### Profitability Calculation
 
-Mining executes when:
+Mining executes when the one-time mining price from the rig is acceptable and safety limits are satisfied:
 ```
-currentPrice ≤ maxPricePerToken
+currentPrice ≤ maxMiningPrice
 AND cooldownPeriod elapsed
 AND gasPrice ≤ maxGasPrice
 AND sufficient ETH balance
@@ -249,13 +249,13 @@ npm run status
 🎯 Target Rig: 0x9310aF...
 
 ⚙️  Configuration:
-  Max Price: 0.001 ETH/token
+  Max Mining Price: 0.001 ETH
   Auto Mining: ✅ ENABLED
   ETH Balance: 0.1 ETH
 
 💰 Profitability:
   Status: ✅ PROFITABLE
-  Current Price: 0.000876 ETH/token
+  Current Price: 0.000876 ETH
 ```
 
 ## 🛠️ Advanced Usage
@@ -340,7 +340,7 @@ forge verify-contract $CONTROLLER_ADDRESS \
   --constructor-args $(cast abi-encode \
     "constructor(address,address,address,uint256,uint256)" \
     $TARGET_RIG $OWNER_ADDRESS $MANAGER_ADDRESS \
-    $MAX_PRICE_PER_TOKEN $MIN_PROFIT_MARGIN) \
+    $MAX_MINING_PRICE $MIN_PROFIT_MARGIN) \
   --etherscan-api-key $BASESCAN_API_KEY
 ```
 

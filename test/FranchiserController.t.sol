@@ -16,13 +16,13 @@ contract FranchiserControllerTest is Test {
     
     receive() external payable {}
     
-    uint256 constant MAX_PRICE = 0.001 ether;
+    uint256 constant MAX_MINING_PRICE = 0.001 ether;
     uint256 constant MIN_MARGIN = 1000; // 10%
     uint256 constant INITIAL_QUOTE_BALANCE = 10 ether;
     
     event TokensMinted(address indexed recipient, uint256 amount, uint256 cost, uint256 epochId);
     event ConfigUpdated(
-        uint256 maxPricePerToken,
+        uint256 maxMiningPrice,
         uint256 minProfitMargin,
         uint256 maxMintAmount,
         uint256 minMintAmount,
@@ -48,13 +48,8 @@ contract FranchiserControllerTest is Test {
         mockRig = new MockRig(address(quoteToken), address(unitToken));
         
         // Deploy controller
-        controller = new FranchiserController(
-            address(mockRig),  // targetRig
-            owner,
-            manager,
-            MAX_PRICE,
-            MIN_MARGIN
-        );
+        controller =
+            new FranchiserController(address(mockRig), owner, manager, MAX_MINING_PRICE, MIN_MARGIN);
         
         // Fund controller with quote tokens (not ETH)
         quoteToken.mint(address(controller), INITIAL_QUOTE_BALANCE);
@@ -67,17 +62,9 @@ contract FranchiserControllerTest is Test {
         assertTrue(controller.hasRole(OWNER_ROLE, owner));
         assertTrue(controller.hasRole(MANAGER_ROLE, manager));
         
-        (
-            uint256 maxPrice,
-            uint256 minMargin,
-            ,
-            ,
-            bool enabled,
-            ,
-            
-        ) = controller.config();
+        (uint256 maxMiningPrice, uint256 minMargin, , , bool enabled, ,) = controller.config();
         
-        assertEq(maxPrice, MAX_PRICE);
+        assertEq(maxMiningPrice, MAX_MINING_PRICE);
         assertEq(minMargin, MIN_MARGIN);
         assertTrue(enabled);
     }
@@ -151,45 +138,21 @@ contract FranchiserControllerTest is Test {
     }
     
     function testUpdateConfig() public {
-        uint256 newMaxPrice = 0.002 ether;
+        uint256 newMaxMiningPrice = 0.002 ether;
         
         vm.expectEmit(true, true, true, true);
-        emit ConfigUpdated(
-            newMaxPrice,
-            2000,
-            200 ether,
-            2 ether,
-            true,
-            600,
-            20
-        );
+        emit ConfigUpdated(newMaxMiningPrice, 2000, 200 ether, 2 ether, true, 600, 20);
         
-        controller.updateConfig(
-            newMaxPrice,
-            2000,
-            200 ether,
-            2 ether,
-            true,
-            600,
-            20
-        );
+        controller.updateConfig(newMaxMiningPrice, 2000, 200 ether, 2 ether, true, 600, 20);
         
-        (uint256 maxPrice, , , , , , ) = controller.config();
-        assertEq(maxPrice, newMaxPrice);
+        (uint256 maxMiningPrice, , , , , ,) = controller.config();
+        assertEq(maxMiningPrice, newMaxMiningPrice);
     }
     
     function testUpdateConfigNonOwner() public {
         vm.prank(manager);
         vm.expectRevert();
-        controller.updateConfig(
-            MAX_PRICE,
-            MIN_MARGIN,
-            100 ether,
-            1 ether,
-            true,
-            300,
-            10
-        );
+        controller.updateConfig(MAX_MINING_PRICE, MIN_MARGIN, 100 ether, 1 ether, true, 300, 10);
     }
     
     function testEmergencyStop() public {

@@ -13,7 +13,7 @@ const CONTROLLER_ADDRESS = process.env.CONTROLLER_ADDRESS;
 
 const CONTROLLER_ABI = [
   "function getMiningStatus() view returns (bool isEnabled, bool canMintNow, uint256 currentPrice, uint256 nextMintTime, uint256 quoteBalance, uint256 currentEpochId)",
-  "function config() view returns (uint256 maxPricePerToken, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
+  "function config() view returns (uint256 maxMiningPrice, uint256 minProfitMargin, uint256 maxMintAmount, uint256 minMintAmount, bool autoMiningEnabled, uint256 cooldownPeriod, uint256 maxGasPrice)",
   "function checkProfitability() view returns (bool isProfitable, uint256 currentPrice, uint256 recommendedAmount)",
   "function lastMintTimestamp() view returns (uint256)",
   "function targetRig() view returns (address)",
@@ -63,7 +63,7 @@ async function main() {
     // Get configuration
     const config = await controller.config();
     console.log("⚙️  Configuration:");
-    console.log(`  Max Price: ${ethers.formatUnits(config.maxPricePerToken, quoteDecimals)} ${quoteSymbol}/token`);
+    console.log(`  Max Mining Price: ${ethers.formatUnits(config.maxMiningPrice, quoteDecimals)} ${quoteSymbol} per mine`);
     console.log(`  Min Profit: ${config.minProfitMargin / 100}%`);
     console.log(`  Mint Range: ${ethers.formatEther(config.minMintAmount)} - ${ethers.formatEther(config.maxMintAmount)} tokens`);
     console.log(`  Auto Mining: ${config.autoMiningEnabled ? "✅ ENABLED" : "❌ DISABLED"}`);
