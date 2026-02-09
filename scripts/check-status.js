@@ -28,7 +28,7 @@ async function main() {
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const controller = new ethers.Contract(CONTROLLER_ADDRESS, CONTROLLER_ABI, provider);
 
-  console.log("🐋 Glazed Whale Status Report\n");
+  console.log("⚙️  Auto-Mine Franchiser Status\n");
   console.log(`📍 Controller: ${CONTROLLER_ADDRESS}`);
 
   try {

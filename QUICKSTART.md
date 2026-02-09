@@ -1,13 +1,14 @@
-# Glazed Whale - Quick Start Guide 🚀
+# Auto-Mine Franchiser - Quick Start Guide 🚀
 
 Get up and running in 5 minutes.
 
 ## 1️⃣ Install
 
 ```bash
-git clone https://github.com/cruller-agent/glazed-whale.git
-cd glazed-whale
+git clone https://github.com/cruller-agent/auto-mine-franchiser.git
+cd auto-mine-franchiser
 npm install
+forge install
 ```
 
 ## 2️⃣ Configure
@@ -19,6 +20,9 @@ nano .env
 
 **Required settings:**
 ```bash
+# Target Rig to Mine (REQUIRED)
+TARGET_RIG=0x9310aF2707c458F52e1c4D48749433454D731060  # Set your target
+
 # Your wallet keys
 PRIVATE_KEY=0x...              # Owner wallet (for deployment)
 MANAGER_PRIVATE_KEY=0x...      # Bot wallet (for mining)
@@ -35,7 +39,7 @@ MAX_PRICE_PER_TOKEN=1000000000000000  # 0.001 ETH
 
 ```bash
 # Compile
-npm run compile
+npm run build
 
 # Test
 npm test
@@ -66,22 +70,22 @@ cast send $CONTROLLER_ADDRESS --value 0.1ether \
 npm run monitor
 
 # Or run in background with PM2
-pm2 start scripts/monitor.js --name glazed-whale
+pm2 start scripts/monitor.js --name auto-mine-franchiser
 pm2 save
 ```
 
 ## 📊 Check Status
 
 ```bash
-node scripts/check-status.js
+npm run status
 ```
 
 Output:
 ```
-🐋 Glazed Whale Status Report
+⚙️  Auto-Mine Franchiser Status
 
 📍 Controller: 0x...
-🎯 Franchiser Rig: 0x9310aF...
+🎯 Target Rig: 0x9310aF...
 
 ⚙️  Configuration:
   Max Price: 0.001 ETH/token
@@ -91,6 +95,16 @@ Output:
 💰 Profitability:
   Status: ✅ PROFITABLE
   Current Price: 0.000876 ETH/token
+```
+
+## 🎯 Update Target Rig (Owner Only)
+
+```bash
+# Switch to a different Franchiser Rig
+cast send $CONTROLLER_ADDRESS \
+  "updateTargetRig(address)" \
+  0xNEW_RIG_ADDRESS \
+  --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
 ```
 
 ## 🎛️ Update Config (Owner Only)
@@ -118,7 +132,7 @@ cast send $CONTROLLER_ADDRESS "withdrawETH(address,uint256)" \
   $OWNER_ADDRESS 0 \
   --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
 
-# Withdraw minted tokens (get token address from Franchiser docs)
+# Withdraw minted tokens
 cast send $CONTROLLER_ADDRESS "withdrawTokens(address,address,uint256)" \
   $TOKEN_ADDRESS $OWNER_ADDRESS 0 \
   --rpc-url $BASE_RPC_URL --private-key $PRIVATE_KEY
@@ -128,10 +142,10 @@ cast send $CONTROLLER_ADDRESS "withdrawTokens(address,address,uint256)" \
 
 ```bash
 # If using PM2
-pm2 logs glazed-whale
+pm2 logs auto-mine-franchiser
 
 # If using systemd
-journalctl -u glazed-whale -f
+journalctl -u auto-mine-franchiser -f
 ```
 
 ## ⚠️ Troubleshooting
@@ -148,15 +162,18 @@ journalctl -u glazed-whale -f
 **"Gas price too high"**  
 → Increase `MAX_GAS_PRICE` in config or wait
 
+**"TARGET_RIG not set"**  
+→ Add TARGET_RIG to your .env file
+
 ## 📚 Full Documentation
 
 See [README.md](./README.md) for complete documentation.
 
 ## 🆘 Support
 
-- GitHub Issues: https://github.com/cruller-agent/glazed-whale/issues
+- GitHub Issues: https://github.com/cruller-agent/auto-mine-franchiser/issues
 - Twitter: @cruller_donut
 
 ---
 
-Happy mining! 🐋
+Happy mining! ⚙️

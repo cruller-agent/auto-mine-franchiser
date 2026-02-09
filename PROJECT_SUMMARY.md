@@ -1,19 +1,24 @@
-# Glazed Whale 🐋 - Project Summary
+# Auto-Mine Franchiser ⚙️ - Project Summary
 
-**Repository:** https://github.com/cruller-agent/glazed-whale  
+**Repository:** https://github.com/cruller-agent/auto-mine-franchiser  
 **Created:** 2026-02-09  
+**Version:** 2.0.0  
 **Status:** ✅ Production Ready
 
 ## Overview
 
-Glazed Whale is an automated Franchiser token mining bot that monitors the Franchiser Rig contract on Base and executes profitable mining operations through a smart contract controller.
+Auto-Mine Franchiser is a generic automated mining bot for Franchiser-compatible tokens. Deploy once and mine any Franchiser Rig contract - switch targets on the fly without redeployment.
+
+## What It Does
+
+Continuously monitors a configured Franchiser Rig contract and automatically mines tokens when the price meets profitability thresholds. The target rig is stored onchain and can be updated by the owner at any time.
 
 ## Architecture
 
 ### Smart Contract (`FranchiserController.sol`)
 - **Purpose:** Holds ETH and executes mining operations with safety constraints
 - **Access Control:** 
-  - Owner role: Withdraw funds, update config
+  - Owner role: Withdraw funds, update config, **change target rig**
   - Manager role: Trigger mining operations
 - **Safety Features:**
   - Configurable price thresholds
@@ -21,6 +26,7 @@ Glazed Whale is an automated Franchiser token mining bot that monitors the Franc
   - Gas price limits
   - Emergency stop mechanism
 - **Configuration stored onchain:**
+  - Target rig address (updatable)
   - Max price per token
   - Profit margin requirements
   - Mint amount limits
@@ -37,46 +43,49 @@ Glazed Whale is an automated Franchiser token mining bot that monitors the Franc
 
 ## Key Features
 
+✅ **Configurable Target** - Set any Franchiser Rig contract address  
+✅ **Owner-Updatable** - Change target without redeployment  
 ✅ **Fully Automated** - Set and forget mining operations  
 ✅ **Onchain Configuration** - All parameters stored in smart contract  
 ✅ **Role-Based Security** - Separate owner and manager permissions  
 ✅ **Safety Limits** - Price, gas, cooldown constraints  
-✅ **Production Ready** - Tests, docs, systemd service  
-✅ **Real-time Stats** - Track performance and profitability  
+✅ **Production Ready** - 18/18 tests passing, comprehensive docs  
 
 ## Technical Stack
 
-- **Smart Contracts:** Solidity 0.8.20, OpenZeppelin, Hardhat
+- **Smart Contracts:** Solidity 0.8.20, OpenZeppelin, Foundry
 - **Runtime:** Node.js 18+, ethers.js v6
 - **Network:** Base mainnet (Chain ID 8453)
-- **Testing:** Hardhat test suite with mocks
+- **Testing:** Foundry test suite with mocks
 
 ## Deployment Guide
 
-1. **Install dependencies:** `npm install`
-2. **Configure environment:** Copy `.env.example` to `.env` and fill in values
-3. **Compile contracts:** `npm run compile`
-4. **Run tests:** `npm test`
-5. **Deploy to Base:** `npm run deploy`
-6. **Fund controller:** Send ETH to deployed address
-7. **Start monitoring:** `npm run monitor`
+1. **Set TARGET_RIG:** Add target Franchiser Rig address to .env (required)
+2. **Install dependencies:** `npm install && forge install`
+3. **Configure environment:** Copy `.env.example` to `.env` and fill in values
+4. **Compile contracts:** `npm run build`
+5. **Run tests:** `npm test`
+6. **Deploy to Base:** `npm run deploy`
+7. **Fund controller:** Send ETH to deployed address
+8. **Start monitoring:** `npm run monitor`
 
 ## Configuration Parameters
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| MAX_PRICE_PER_TOKEN | 0.001 ETH | Maximum price to pay |
-| MIN_PROFIT_MARGIN | 10% | Minimum profit required |
-| COOLDOWN_PERIOD | 300s | Time between mints |
-| MAX_GAS_PRICE | 10 gwei | Gas price limit |
-| POLL_INTERVAL | 60000ms | Check frequency |
+| Parameter | Owner Updatable? | Default | Description |
+|-----------|-----------------|---------|-------------|
+| `targetRig` | ✅ Yes | Set at deploy | Target Rig contract to mine |
+| `maxPricePerToken` | ✅ Yes | 0.001 ETH | Maximum price to pay |
+| `minProfitMargin` | ✅ Yes | 10% | Minimum profit required |
+| `cooldownPeriod` | ✅ Yes | 300s | Time between mints |
+| `maxGasPrice` | ✅ Yes | 10 gwei | Gas price limit |
 
 ## Use Cases
 
-- **Passive Income:** Automated mining of Franchiser tokens
-- **Arbitrage:** Execute when mining price < market price
+- **Single Rig Mining:** Deploy and mine one Franchiser token
+- **Multi-Rig Strategy:** Switch between different tokens without redeployment
+- **Diversification:** Deploy multiple controllers for different rigs
+- **Opportunistic Mining:** Change targets based on market conditions
 - **DAO Treasury:** Autonomous treasury management
-- **Agent Operations:** Template for autonomous on-chain operations
 
 ## Security Considerations
 
@@ -91,7 +100,7 @@ Glazed Whale is an automated Franchiser token mining bot that monitors the Franc
 
 Potential additions:
 - [ ] DEX price oracle integration for true profit calculation
-- [ ] Multiple token support (generalize beyond Franchiser)
+- [ ] Multiple token support (parallel mining)
 - [ ] Telegram/Discord notifications
 - [ ] Web dashboard for monitoring
 - [ ] Historical performance analytics
@@ -101,12 +110,35 @@ Potential additions:
 
 **Deployment Cost:** ~0.003 ETH  
 **Per-Mint Gas:** ~200k-300k gas (~0.002-0.003 ETH at 10 gwei)  
-**Mining Cost:** Variable (depends on Franchiser epoch)  
+**Mining Cost:** Variable (depends on target rig's epoch)  
 **Potential Returns:** Depends on token price appreciation
+
+## Major Changes (v2.0)
+
+### From Glazed Whale (v1.0):
+- ✅ Renamed for generic use
+- ✅ Made target rig configurable (was immutable)
+- ✅ Added `updateTargetRig()` function
+- ✅ Added `TargetRigUpdated` event
+- ✅ Converted from Hardhat to Foundry
+- ✅ Added 3 new tests (18 total)
+- ✅ Complete documentation rewrite
+
+### Key Innovation:
+```solidity
+// v1.0 (immutable)
+address public immutable franchiserRig;
+
+// v2.0 (configurable)
+address public targetRig;
+function updateTargetRig(address _newRig) external onlyOwner;
+```
 
 ## Links
 
-- **Repository:** https://github.com/cruller-agent/glazed-whale
+- **Repository:** https://github.com/cruller-agent/auto-mine-franchiser
+- **Quick Start:** [QUICKSTART.md](./QUICKSTART.md)
+- **Documentation:** [README.md](./README.md)
 - **Franchiser Docs:** [FRANCHISE.md](https://github.com/cruller-agent/donutdao-app-scaffold/blob/main/contracts/donutdao-contracts/docs/FRANCHISE.md)
 - **DonutDAO:** https://donutdao.com
 - **Base Network:** https://base.org
